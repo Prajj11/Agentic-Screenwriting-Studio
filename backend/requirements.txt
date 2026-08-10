@@ -1,0 +1,27 @@
+# Google ADK & Gemini
+google-adk>=1.2.0
+google-genai>=1.14.0
+
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+websockets>=14.0
+
+# Database
+aiosqlite>=0.21.0
+
+# Vector Store
+chromadb>=0.6.0
+
+# Data Models
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# Parallel API
+parallel-web>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+python-multipart>=0.0.18
+httpx>=0.28.0
+aiofiles>=24.1.0

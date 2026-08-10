@@ -1,0 +1,21 @@
+{
+  "name": "Save the Cat! Beat Sheet",
+  "description": "Blake Snyder's 15-beat structure from 'Save the Cat!' — the most widely used modern screenplay structure.",
+  "beats": [
+    {"beat_number": 1, "act": 1, "title": "Opening Image", "description": "A visual that represents the struggle and tone of the story. A 'before' snapshot.", "estimated_duration_minutes": 1},
+    {"beat_number": 2, "act": 1, "title": "Theme Stated", "description": "Someone (usually not the protagonist) states the movie's theme, often in a casual way. The protagonist doesn't understand it yet.", "estimated_duration_minutes": 1},
+    {"beat_number": 3, "act": 1, "title": "Set-Up", "description": "Explore the protagonist's status quo life. Show their flaws, their world, and all the things that need fixing. Introduce key supporting characters.", "estimated_duration_minutes": 10},
+    {"beat_number": 4, "act": 1, "title": "Catalyst", "description": "The moment that changes everything. A life-changing event that knocks the protagonist out of their ordinary world.", "estimated_duration_minutes": 2},
+    {"beat_number": 5, "act": 1, "title": "Debate", "description": "The protagonist debates: should I go? Is this wise? What if I fail? This is the last chance to turn back.", "estimated_duration_minutes": 8},
+    {"beat_number": 6, "act": 2, "title": "Break into Two", "description": "The protagonist decides to act and enters Act 2's upside-down world. This must be a proactive choice, not something that happens to them.", "estimated_duration_minutes": 2},
+    {"beat_number": 7, "act": 2, "title": "B Story", "description": "The subplot begins — often a love story or friendship. This carries the theme of the movie and provides the protagonist with new perspective.", "estimated_duration_minutes": 3},
+    {"beat_number": 8, "act": 2, "title": "Fun and Games", "description": "The 'promise of the premise.' This is why people bought the ticket — the trailer moments. The protagonist explores the new world and seems to be winning.", "estimated_duration_minutes": 15},
+    {"beat_number": 9, "act": 2, "title": "Midpoint", "description": "A false victory or false defeat at the story's center. Stakes are raised. The clock starts ticking. The fun is over and consequences become real.", "estimated_duration_minutes": 3},
+    {"beat_number": 10, "act": 2, "title": "Bad Guys Close In", "description": "External pressures tighten. Internal doubts multiply. The team unravels. The antagonist gains ground. Everything the protagonist built starts to crumble.", "estimated_duration_minutes": 12},
+    {"beat_number": 11, "act": 2, "title": "All Is Lost", "description": "The opposite of the Midpoint. Everything falls apart. A 'whiff of death' — someone or something dies (literally or metaphorically).", "estimated_duration_minutes": 3},
+    {"beat_number": 12, "act": 2, "title": "Dark Night of the Soul", "description": "The protagonist wallows in hopelessness. They've lost everything and have no idea how to proceed. They must dig deep to find new strength.", "estimated_duration_minutes": 5},
+    {"beat_number": 13, "act": 3, "title": "Break into Three", "description": "Eureka! A new idea, fresh inspiration (often from the B Story) gives the protagonist the solution. They synthesize everything they've learned.", "estimated_duration_minutes": 2},
+    {"beat_number": 14, "act": 3, "title": "Finale", "description": "The protagonist executes their new plan. Old world and new world synthesize. The protagonist proves they've changed by applying the theme. The antagonist is defeated.", "estimated_duration_minutes": 12},
+    {"beat_number": 15, "act": 3, "title": "Final Image", "description": "The opposite of the Opening Image. Proof that change has occurred. The 'after' snapshot.", "estimated_duration_minutes": 1}
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "name": "Three-Act Structure",
+  "description": "The classic three-act screenplay structure: Setup, Confrontation, Resolution.",
+  "beats": [
+    {
+      "beat_number": 1,
+      "act": 1,
+      "title": "Opening Image",
+      "description": "The very first impression of the story. A single scene or shot that sets the tone, mood, and stakes. It's the 'before' snapshot of the protagonist's world.",
+      "estimated_duration_minutes": 1
+    },
+    {
+      "beat_number": 2,
+      "act": 1,
+      "title": "Exposition / Setup",
+      "description": "Introduce the protagonist, their world, their routine, and their core flaw or need. Establish the status quo that will be disrupted. Plant seeds for subplots.",
+      "estimated_duration_minutes": 10
+    },
+    {
+      "beat_number": 3,
+      "act": 1,
+      "title": "Inciting Incident",
+      "description": "The event that disrupts the protagonist's ordinary world and sets the central conflict in motion. Something happens that demands a response.",
+      "estimated_duration_minutes": 3
+    },
+    {
+      "beat_number": 4,
+      "act": 1,
+      "title": "Debate / Refusal",
+      "description": "The protagonist hesitates. They weigh the cost of action vs. inaction. Internal and external forces push and pull. Stakes are clarified.",
+      "estimated_duration_minutes": 8
+    },
+    {
+      "beat_number": 5,
+      "act": 1,
+      "title": "End of Act One / Plot Point 1",
+      "description": "The protagonist makes a decisive choice that launches them into the main conflict. There's no turning back. The story shifts into a new direction entirely.",
+      "estimated_duration_minutes": 3
+    },
+    {
+      "beat_number": 6,
+      "act": 2,
+      "title": "Rising Action / Tests & Allies",
+      "description": "The protagonist navigates the new world of Act 2. They encounter allies, enemies, and obstacles. Subplots develop. The protagonist learns new skills or truths.",
+      "estimated_duration_minutes": 15
+    },
+    {
+      "beat_number": 7,
+      "act": 2,
+      "title": "Midpoint",
+      "description": "A major revelation, reversal, or escalation at the story's center. Either a false victory (things seem great but won't last) or a false defeat (things seem hopeless but a path will emerge). Raises the stakes dramatically.",
+      "estimated_duration_minutes": 5
+    },
+    {
+      "beat_number": 8,
+      "act": 2,
+      "title": "Complications / Escalation",
+      "description": "The antagonist closes in. Allies are tested or lost. The protagonist's plan starts to unravel. Pressure intensifies. Subplots converge.",
+      "estimated_duration_minutes": 15
+    },
+    {
+      "beat_number": 9,
+      "act": 2,
+      "title": "Crisis / All Is Lost",
+      "description": "The protagonist's lowest point. Their plan has failed, their allies are scattered, and the antagonist seems unstoppable. A death (literal or metaphorical) occurs.",
+      "estimated_duration_minutes": 5
+    },
+    {
+      "beat_number": 10,
+      "act": 2,
+      "title": "End of Act Two / Plot Point 2",
+      "description": "A new piece of information, a renewed determination, or an unexpected ally gives the protagonist a final chance. They commit fully to the climactic confrontation.",
+      "estimated_duration_minutes": 3
+    },
+    {
+      "beat_number": 11,
+      "act": 3,
+      "title": "Climax",
+      "description": "The final confrontation between protagonist and antagonist. All themes, subplots, and character arcs converge. The protagonist must use everything they've learned.",
+      "estimated_duration_minutes": 10
+    },
+    {
+      "beat_number": 12,
+      "act": 3,
+      "title": "Resolution / Denouement",
+      "description": "The aftermath. Show the new status quo. Resolve remaining subplots. Demonstrate how the protagonist has changed. The 'after' image contrasting the opening.",
+      "estimated_duration_minutes": 5
+    }
+  ]
+}
