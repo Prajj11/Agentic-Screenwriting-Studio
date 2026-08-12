@@ -35,9 +35,96 @@ from models.api_models import (
 )
 from models.script_state import ScriptState, ScriptFormat, Genre, StructuralFramework
 from db.sqlite_store import get_sqlite_store
-from db.chroma_store import get_chroma_store
-from tools.script_state import set_active_state, get_active_state_sync, _active_states
+from db.vector_router import get_vector_store
+from tools.script_state import set_active_state, get_active_state_sync, _active_states, _normalize_enum
 
+# ── Gemini Rate Limit Monkey Patch ──────────────────────────────────────
+import asyncio
+import time
+from google.genai.models import AsyncModels, Models
+
+# Async patch
+_orig_async_generate_content = AsyncModels.generate_content
+_orig_async_generate_content_stream = AsyncModels.generate_content_stream
+
+async def _patched_async_generate_content(self, *args, **kwargs):
+    retries = 7
+    delay = 4.0
+    for attempt in range(retries):
+        try:
+            return await _orig_async_generate_content(self, *args, **kwargs)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if attempt == retries - 1:
+                    raise
+                logger.warning(f"Rate limited (429). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                await asyncio.sleep(delay)
+                delay *= 2
+            else:
+                raise
+
+async def _patched_async_generate_content_stream(self, *args, **kwargs):
+    retries = 7
+    delay = 4.0
+    for attempt in range(retries):
+        try:
+            return await _orig_async_generate_content_stream(self, *args, **kwargs)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if attempt == retries - 1:
+                    raise
+                logger.warning(f"Rate limited (429) in stream. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                await asyncio.sleep(delay)
+                delay *= 2
+            else:
+                raise
+
+AsyncModels.generate_content = _patched_async_generate_content
+AsyncModels.generate_content_stream = _patched_async_generate_content_stream
+
+# Sync patch
+_orig_generate_content = Models.generate_content
+_orig_generate_images = Models.generate_images
+
+def _patched_generate_content(self, *args, **kwargs):
+    retries = 7
+    delay = 4.0
+    for attempt in range(retries):
+        try:
+            return _orig_generate_content(self, *args, **kwargs)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if attempt == retries - 1:
+                    raise
+                logger.warning(f"Rate limited (429) in sync call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                raise
+
+def _patched_generate_images(self, *args, **kwargs):
+    retries = 7
+    delay = 4.0
+    for attempt in range(retries):
+        try:
+            return _orig_generate_images(self, *args, **kwargs)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if attempt == retries - 1:
+                    raise
+                logger.warning(f"Rate limited (429) in images call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                raise
+
+Models.generate_content = _patched_generate_content
+Models.generate_images = _patched_generate_images
+# ──────────────────────────────────────────────────────────────────────
 # ── Logging ───────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -107,18 +194,77 @@ def _get_showrunner():
 
 
 async def _get_runner():
-    """Lazy-initialize the ADK Runner."""
+    """Lazy-initialize the ADK Runner with a DB-backed session service."""
     global _runner
     if _runner is None:
         from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionService
-        
+        from google.adk.sessions import DatabaseSessionService
+
+        # Build the sqlite+aiosqlite URL from the same data/ directory already
+        # used by the script-state SQLite store so everything lives together.
+        session_db_url = (
+            "sqlite+aiosqlite:///"
+            + settings.sqlite_db_path.replace(
+                "scriptwriter.db", "adk_sessions.db"
+            ).replace("\\", "/")
+        )
+        logger.info(f"ADK session DB: {session_db_url}")
+
         _runner = Runner(
             agent=_get_showrunner(),
             app_name="screenwriting_studio",
-            session_service=InMemorySessionService(),
+            session_service=DatabaseSessionService(db_url=session_db_url),
         )
     return _runner
+
+
+async def _get_or_create_session(runner, project_id: str) -> str:
+    """
+    Return the session_id for project_id, creating or re-creating it in the
+    DB-backed session service when necessary.
+
+    Strategy:
+    1. Look up the cached session_id for this project.
+    2. Try to fetch it from the DB — if it exists, return it.
+    3. If the DB row is missing (restart / new worker / first use), create a
+       fresh session, cache the new ID, and log a notice.
+    """
+    APP_NAME = "screenwriting_studio"
+    USER_ID = "user"
+
+    session_id = _sessions.get(project_id, f"session_{project_id}")
+
+    # Try to read the existing session from the DB
+    try:
+        existing = await runner.session_service.get_session(
+            app_name=APP_NAME,
+            user_id=USER_ID,
+            session_id=session_id,
+        )
+        if existing is not None:
+            _sessions[project_id] = session_id
+            return session_id
+    except Exception as probe_err:
+        logger.debug(f"Session probe raised (will recreate): {probe_err}")
+
+    # Session missing — auto-recreate transparently
+    logger.info(
+        f"Session '{session_id}' not found in DB for project '{project_id}' — "
+        "recreating transparently."
+    )
+    try:
+        await runner.session_service.create_session(
+            app_name=APP_NAME,
+            user_id=USER_ID,
+            session_id=session_id,
+            state={"project_id": project_id},
+        )
+    except Exception as create_err:
+        # If the session_id already exists concurrently just continue
+        logger.debug(f"Session create raised (likely race, continuing): {create_err}")
+
+    _sessions[project_id] = session_id
+    return session_id
 
 
 async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict]]:
@@ -130,27 +276,8 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
     events_list = []
     response_parts = []
 
-    # Get or create session
-    if project_id not in _sessions:
-        session_id = f"session_{project_id}"
-        _sessions[project_id] = session_id
-    
-    session_id = _sessions[project_id]
-
-    # Ensure session exists
-    try:
-        session = await runner.session_service.get_session(
-            app_name="screenwriting_studio",
-            user_id="user",
-            session_id=session_id,
-        )
-    except Exception:
-        session = await runner.session_service.create_session(
-            app_name="screenwriting_studio",
-            user_id="user",
-            session_id=session_id,
-            state={"project_id": project_id},
-        )
+    # Resolve (or create) a persistent DB-backed session
+    session_id = await _get_or_create_session(runner, project_id)
 
     # Inject project_id context into the message
     full_message = f"[Project ID: {project_id}]\n\n{user_message}"
@@ -178,20 +305,25 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
 
             # Collect text responses
             if hasattr(event, 'content') and event.content:
-                if hasattr(event.content, 'parts'):
+                if hasattr(event.content, 'parts') and event.content.parts:
                     for part in event.content.parts:
                         if hasattr(part, 'text') and part.text:
-                            response_parts.append(part.text)
-                            
-                            # Broadcast streaming event
-                            ws_event = {
-                                "type": "text_chunk",
-                                "agent": author,
-                                "content": part.text,
-                                "timestamp": datetime.now().isoformat(),
-                            }
-                            events_list.append(ws_event)
-                            await broadcast_event(ws_event)
+                            txt = part.text.strip()
+                            if txt and txt not in response_parts:
+                                response_parts.append(txt)
+                                ws_event = {
+                                    "type": "text_chunk",
+                                    "agent": author,
+                                    "content": txt,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                                events_list.append(ws_event)
+                                await broadcast_event(ws_event)
+
+            if hasattr(event, 'text') and event.text:
+                txt = str(event.text).strip()
+                if txt and txt not in response_parts:
+                    response_parts.append(txt)
 
             # Track tool calls
             if hasattr(event, 'function_calls') and event.function_calls:
@@ -216,7 +348,17 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
             if _agent_statuses[name]["status"] == "working":
                 _agent_statuses[name]["status"] = "idle"
 
-    response_text = "\n".join(response_parts) if response_parts else "I'm processing your request..."
+    if response_parts:
+        response_text = "\n\n".join(response_parts)
+    else:
+        state = get_active_state_sync(project_id)
+        if state and state.beat_sheet:
+            response_text = f"I have processed your pitch for '{state.title}' and generated {len(state.beat_sheet)} beats in the Beat Sheet!"
+        elif state and state.scenes:
+            response_text = f"I have updated the script with {len(state.scenes)} scene(s)!"
+        else:
+            response_text = "I have processed your request and updated the script state."
+
     return response_text, events_list
 
 
@@ -227,7 +369,7 @@ async def startup():
     """Initialize database connections on startup."""
     settings.ensure_directories()
     await get_sqlite_store()
-    get_chroma_store()
+    get_vector_store()  # Initializes both ChromaDB + ClickHouse
     logger.info("🎬 Agentic Screenwriting Studio backend started")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
 
@@ -247,6 +389,13 @@ async def health():
     return {"status": "ok", "service": "Agentic Screenwriting Studio", "version": "1.0.0"}
 
 
+@app.get("/api/health/clickhouse")
+async def health_clickhouse():
+    """ClickHouse Cloud vector store connection status."""
+    store = get_vector_store()
+    return store.health_check()
+
+
 # ── Chat Endpoint ─────────────────────────────────────────────────────
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -259,11 +408,11 @@ async def chat(request: ChatRequest):
         project_id = str(uuid.uuid4())[:12]
         state = ScriptState(project_id=project_id)
         if request.genre:
-            state.genre = request.genre
+            state.genre = _normalize_enum(request.genre, Genre)
         if request.format:
-            state.format = request.format
+            state.format = _normalize_enum(request.format, ScriptFormat)
         if request.framework:
-            state.framework = request.framework
+            state.framework = _normalize_enum(request.framework, StructuralFramework)
         set_active_state(project_id, state)
         store = await get_sqlite_store()
         await store.save_script_state(state)
@@ -309,14 +458,19 @@ async def chat(request: ChatRequest):
 async def create_project(request: CreateProjectRequest):
     """Create a new screenplay project."""
     project_id = str(uuid.uuid4())[:12]
-    state = ScriptState(
-        project_id=project_id,
-        title=request.title,
-        genre=request.genre,
-        format=request.format,
-        framework=request.framework,
-        logline=request.logline,
-    )
+    kwargs = {
+        "project_id": project_id,
+        "title": request.title,
+        "logline": request.logline,
+    }
+    if request.genre:
+        kwargs["genre"] = _normalize_enum(request.genre, Genre)
+    if request.format:
+        kwargs["format"] = _normalize_enum(request.format, ScriptFormat)
+    if request.framework:
+        kwargs["framework"] = _normalize_enum(request.framework, StructuralFramework)
+
+    state = ScriptState(**kwargs)
     set_active_state(project_id, state)
     store = await get_sqlite_store()
     await store.save_script_state(state)
@@ -385,6 +539,19 @@ async def get_characters(project_id: str):
     if not state:
         raise HTTPException(404, f"Project {project_id} not found")
     return {name: json.loads(c.model_dump_json()) for name, c in state.characters.items()}
+
+
+# ── Session Management ────────────────────────────────────────────────
+
+@app.get("/api/sessions/{project_id}")
+async def get_or_create_session_endpoint(project_id: str):
+    """
+    Return the session_id for a project, creating it in the DB if absent.
+    Frontend calls this on startup / page-refresh to recover a previous session.
+    """
+    runner = await _get_runner()
+    session_id = await _get_or_create_session(runner, project_id)
+    return {"project_id": project_id, "session_id": session_id, "status": "ok"}
 
 
 # ── Agent Status ──────────────────────────────────────────────────────

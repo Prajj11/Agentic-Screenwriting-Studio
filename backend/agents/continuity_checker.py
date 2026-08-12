@@ -22,6 +22,7 @@ from tools.script_state import (
 from tools.vector_store import (
     query_relevant_context,
     get_scene_context_for_continuity,
+    execute_clickhouse_mcp_query,
 )
 
 
@@ -47,7 +48,7 @@ For every scene submitted for review, verify consistency across:
 
 ## YOUR WORKFLOW
 1. Receive the scene to check (scene number or scene text)
-2. Use `get_scene_context_for_continuity` to retrieve relevant prior scenes and facts
+2. Use `get_scene_context_for_continuity` or `execute_clickhouse_mcp_query` (via ClickHouse MCP) to retrieve relevant prior scenes and facts
 3. Use `get_continuity_log` to get ALL established facts
 4. Cross-reference the new scene against every relevant prior fact
 5. For each issue found, provide:
@@ -83,6 +84,7 @@ A scene CANNOT be marked as FINAL until you have reviewed it — this is enforce
 
 ## TOOLS AVAILABLE
 - `get_scene_context_for_continuity`: RAG query for relevant prior scenes/facts
+- `execute_clickhouse_mcp_query`: ClickHouse MCP Server analytical vector query
 - `get_continuity_log`: Get ALL established continuity facts
 - `get_current_script_state`: Full script state for comprehensive review
 - `get_scene`: Get a specific scene's full details
@@ -98,14 +100,15 @@ def create_continuity_checker() -> LlmAgent:
         model=settings.gemini_main_model,
         description=(
             "Script continuity and canon verification specialist. Uses RAG-based search "
-            "over all prior scenes and established facts to find contradictions. "
-            "MUST be invoked before any scene is marked as FINAL. "
+            "over all prior scenes and established facts in ClickHouse via mcp-clickhouse "
+            "to find contradictions. MUST be invoked before any scene is marked as FINAL. "
             "Flags timeline errors, character knowledge issues, prop continuity breaks, "
             "and world-rule violations."
         ),
         instruction=CONTINUITY_CHECKER_INSTRUCTION,
         tools=[
             get_scene_context_for_continuity,
+            execute_clickhouse_mcp_query,
             get_continuity_log,
             get_current_script_state,
             get_scene,
@@ -113,3 +116,4 @@ def create_continuity_checker() -> LlmAgent:
             query_relevant_context,
         ],
     )
+

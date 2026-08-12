@@ -22,8 +22,8 @@ class ChatRequest(BaseModel):
 
 class AgentEvent(BaseModel):
     """A real-time event from the agent system."""
-    event_type: str          # "agent_start", "agent_end", "tool_call", "text_chunk", "error"
-    agent_name: str = ""
+    type: str          # "agent_start", "agent_end", "tool_call", "text_chunk", "error"
+    agent: str = ""
     content: str = ""
     metadata: dict = Field(default_factory=dict)
     timestamp: str = ""

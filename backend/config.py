@@ -20,11 +20,32 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     parallel_api_key: str = ""
 
+    # ── Grafana ───────────────────────────────────────────────────────
+    grafana_api_key: str = ""
+    grafana_url: str = ""
+
+    # ── ClickHouse (Partner Integration) ──────────────────────────────
+    clickhouse_host: str = ""
+    clickhouse_port: int = 8443
+    clickhouse_user: str = "default"
+    clickhouse_password: str = ""
+    clickhouse_database: str = "default"
+
+    @property
+    def clickhouse_enabled(self) -> bool:
+        """True when ClickHouse is configured with a real hostname."""
+        return bool(
+            self.clickhouse_host
+            and self.clickhouse_host != "your-clickhouse-host.clickhouse.cloud"
+            and self.clickhouse_password
+        )
+
     # ── Model Names ───────────────────────────────────────────────────
     gemini_main_model: str = "gemini-2.5-flash"
     gemini_pro_model: str = "gemini-2.5-pro"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
     gemini_image_model: str = "imagen-3.0-generate-002"
+    gemini_embedding_model: str = "text-embedding-004"
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"
@@ -47,7 +68,6 @@ class Settings(BaseSettings):
         """Create all required output and data directories."""
         for dir_path in [
             self.sqlite_db_path.rsplit("/", 1)[0] if "/" in self.sqlite_db_path else "data",
-            self.chroma_persist_dir,
             self.output_images_dir,
             self.output_audio_dir,
         ]:

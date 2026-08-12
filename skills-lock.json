@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "chdb-datastore": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/chdb-datastore/SKILL.md",
+      "computedHash": "1e58471f70c7085a9b73437b02d96bd30ba449c0fa99d836250aeb25504f75c0"
+    },
+    "chdb-sql": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/chdb-sql/SKILL.md",
+      "computedHash": "5042ecc96cb57e19d276751cbabd7be384fb351936a7b202eda67ad98bd195dc"
+    },
+    "clickhouse-architecture-advisor": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickhouse-architecture-advisor/SKILL.md",
+      "computedHash": "7fe4022c8b97ee0d5590e204a69122d186ac9bec63dac4a3d5eda866486e8800"
+    },
+    "clickhouse-best-practices": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickhouse-best-practices/SKILL.md",
+      "computedHash": "986bb494217b6789b19e83848d32b1597ca6cf292a490992f9ca82067a5fb0ec"
+    },
+    "clickhouse-js-node-coding": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickhouse-js-node-coding/SKILL.md",
+      "computedHash": "ebd68720b5614a59ee543dd039359c29554a607b478b418551287f0dc5f29279"
+    },
+    "clickhouse-js-node-rowbinary": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickhouse-js-node-rowbinary/SKILL.md",
+      "computedHash": "f58b957f03d782f48852beb665ee126733effbc1ba59dea94316ad3d596e61fb"
+    },
+    "clickhouse-js-node-troubleshooting": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickhouse-js-node-troubleshooting/SKILL.md",
+      "computedHash": "c92b6061c08ddf2b104dbbf77e40d577a9f175b1fed5887bc345bdb462938db3"
+    },
+    "clickhouse-managed-postgres-rca": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickhouse-managed-postgres-rca/SKILL.md",
+      "computedHash": "17f3d02e0639eb64db5124bdb0a70e94bb32b1aa6997aa2bf7a8d6931ba96bc1"
+    },
+    "clickstack-otel-collector": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/clickstack-otel-collector/SKILL.md",
+      "computedHash": "faa7e0880d51a8af308082e4ba5e8c31beccd889a78f995d5af2fac073b44c62"
+    },
+    "infra-clickhouse": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/infra-clickhouse/SKILL.md",
+      "computedHash": "a8e7d2dc97340711bb18ea9c6ee682f0938fc442ed1d7af61c66b206bf3aff0a"
+    },
+    "infra-postgres": {
+      "source": "clickhouse/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/infra-postgres/SKILL.md",
+      "computedHash": "f1b7ee1635fd68ef0d66dc70499ac14e3f2bf894dbf969ae0ed2764b32449d8d"
+    }
+  }
+}

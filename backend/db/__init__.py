@@ -1,1 +1,1 @@
-"""Database layer — SQLite and ChromaDB stores."""
+"""Database layer — SQLite, ChromaDB, and ClickHouse Cloud stores."""

@@ -13,11 +13,40 @@ from typing import Optional
 from models.script_state import (
     ScriptState, Scene, Character, Beat, ContinuityFact,
     DialogueLine, SceneStatus, BeatStatus,
+    Genre, ScriptFormat, StructuralFramework,
 )
 from db.sqlite_store import get_sqlite_store
-from db.chroma_store import get_chroma_store
+from db.vector_router import get_vector_store
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_enum(value: str, enum_class):
+    """Fuzzy-match a free-text string to an enum member.
+
+    Tries (in order):
+    1. Exact match by value  ("crime" → Genre.CRIME)
+    2. Exact match by name   ("CRIME" → Genre.CRIME)
+    3. Lowered/stripped match ("Crime Noir" → "crime" found as substring)
+    4. Falls back to the raw string (Pydantic will warn but won't crash).
+    """
+    lowered = value.lower().strip()
+    for member in enum_class:
+        if member.value == value or member.value == lowered:
+            return member
+    for member in enum_class:
+        if member.name.lower() == lowered:
+            return member
+    for member in enum_class:
+        if member.value in lowered or lowered in member.value:
+            return member
+    # Last resort — strip to a slug and try again
+    slug = lowered.replace(" ", "_").replace("-", "_")
+    for member in enum_class:
+        if member.value == slug or member.name.lower() == slug:
+            return member
+    logger.warning(f"Could not normalize '{value}' to {enum_class.__name__}, using raw.")
+    return value
 
 # ── In-memory state cache ─────────────────────────────────────────────
 # Agents operate on the in-memory state for speed; periodically flushed to SQLite.
@@ -112,6 +141,11 @@ async def save_character(project_id: str, character_json: str) -> str:
     try:
         char_data = json.loads(character_json)
         name = char_data["name"]
+
+        # Coerce comma-separated string → list (LLMs often send "a, b, c" instead of ["a","b","c"])
+        if isinstance(char_data.get("traits"), str):
+            char_data["traits"] = [t.strip() for t in char_data["traits"].split(",") if t.strip()]
+
         if name in state.characters:
             existing = state.characters[name]
             for key, val in char_data.items():
@@ -178,11 +212,11 @@ async def add_scene_to_script(project_id: str, scene_json: str) -> str:
                 if state.characters[char_name].first_appearance_scene is None:
                     state.characters[char_name].first_appearance_scene = scene.scene_number
 
-        # Index in ChromaDB
-        chroma = get_chroma_store()
-        chroma.index_scene(project_id, scene)
+        # Index in vector stores (ClickHouse + ChromaDB)
+        store = get_vector_store()
+        await store.index_scene(project_id, scene)
         for fact in facts:
-            chroma.index_continuity_fact(project_id, fact)
+            await store.index_continuity_fact(project_id, fact)
 
         # Save
         await _save_state(project_id)
@@ -241,13 +275,13 @@ async def update_project_info(
     if title:
         state.title = title
     if genre:
-        state.genre = genre
+        state.genre = _normalize_enum(genre, Genre)
     if format:
-        state.format = format
+        state.format = _normalize_enum(format, ScriptFormat)
     if logline:
         state.logline = logline
     if framework:
-        state.framework = framework
+        state.framework = _normalize_enum(framework, StructuralFramework)
     await _save_state(project_id)
     return json.dumps({"success": True, "project_id": project_id})
 

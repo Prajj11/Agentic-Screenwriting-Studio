@@ -10,8 +10,11 @@ websockets>=14.0
 # Database
 aiosqlite>=0.21.0
 
-# Vector Store
+# Vector Store & MCP Server
 chromadb>=0.6.0
+clickhouse-connect>=0.8.0
+mcp-clickhouse>=0.1.0
+mcp>=1.0.0
 
 # Data Models
 pydantic>=2.10.0

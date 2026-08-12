@@ -5,11 +5,16 @@ import {
   sendMessage,
   getScriptState,
   getAgentStatuses,
+  getClickHouseHealth,
+  recoverSession,
+  persistProjectId,
+  loadPersistedProjectId,
   type ChatResponse,
   type ScriptState,
   type Scene,
   type Beat,
   type AgentStatus,
+  type ClickHouseHealth,
 } from '@/lib/api';
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket';
 
@@ -48,6 +53,7 @@ export default function StudioPage() {
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [activeScene, setActiveScene] = useState<number>(0);
   const [activeBeat, setActiveBeat] = useState<number | null>(null);
+  const [chHealth, setChHealth] = useState<ClickHouseHealth | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -75,6 +81,36 @@ export default function StudioPage() {
     }, 3000);
     return () => clearInterval(poll);
   }, []);
+
+  // Poll ClickHouse health
+  useEffect(() => {
+    getClickHouseHealth().then(setChHealth).catch(() => {});
+    const poll = setInterval(() => {
+      getClickHouseHealth().then(setChHealth).catch(() => {});
+    }, 30000);
+    return () => clearInterval(poll);
+  }, []);
+
+  // ── Session recovery on mount ────────────────────────────────────
+  // Restore project_id from sessionStorage so a page refresh never loses state.
+  useEffect(() => {
+    const storedId = loadPersistedProjectId();
+    if (!storedId) return;
+
+    setProjectId(storedId);
+
+    // Warm up the DB-backed ADK session so the next chat message succeeds
+    recoverSession(storedId)
+      .then(() => {
+        // Also reload the script state so the UI populates after refresh
+        return getScriptState(storedId);
+      })
+      .then(setScriptState)
+      .catch((err) =>
+        console.warn('Session recovery failed (non-fatal):', err)
+      );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
 
   // Refresh script state after agent response
   const refreshScriptState = useCallback(async (pid: string) => {
@@ -110,9 +146,10 @@ export default function StudioPage() {
         project_id: projectId || undefined,
       });
 
-      // Set project ID from response
+      // Set project ID from response and persist it
       if (response.project_id && !projectId) {
         setProjectId(response.project_id);
+        persistProjectId(response.project_id);
       }
 
       // Add agent response
@@ -171,9 +208,32 @@ export default function StudioPage() {
           <span className="studio-header__project-name">
             {scriptState?.title || 'No Project'}
           </span>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {connected ? '🟢 Live' : '🔴 Offline'}
-          </span>
+          <div className="studio-header__status-badges">
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {connected ? '🟢 Live' : '🔴 Offline'}
+            </span>
+            {chHealth && (
+              <span
+                className={`ch-status-badge ch-status-badge--${
+                  chHealth.clickhouse.status === 'connected'
+                    ? 'connected'
+                    : chHealth.clickhouse.status === 'not_configured'
+                    ? 'fallback'
+                    : 'error'
+                }`}
+                title={
+                  chHealth.clickhouse.status === 'connected'
+                    ? `ClickHouse: ${chHealth.clickhouse.host} — ${chHealth.clickhouse.scenes_indexed ?? 0} scenes, ${chHealth.clickhouse.facts_indexed ?? 0} facts indexed`
+                    : chHealth.clickhouse.status === 'not_configured'
+                    ? 'ClickHouse not configured — using local ChromaDB'
+                    : `ClickHouse error: ${chHealth.clickhouse.error}`
+                }
+              >
+                {chHealth.clickhouse.status === 'connected' ? '🟢' : chHealth.clickhouse.status === 'not_configured' ? '🟡' : '🔴'}
+                {' '}ClickHouse
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
