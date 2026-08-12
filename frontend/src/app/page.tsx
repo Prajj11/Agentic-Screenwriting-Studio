@@ -17,6 +17,8 @@ import {
   type ClickHouseHealth,
 } from '@/lib/api';
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -198,6 +200,12 @@ export default function StudioPage() {
 
   return (
     <div className="studio-layout">
+      {/* ── Ambient Background Animation ────────────────────────── */}
+      <div className="ambient-background">
+        <div className="ambient-blob ambient-blob--1" />
+        <div className="ambient-blob ambient-blob--2" />
+      </div>
+
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="studio-header">
         <div className="studio-header__brand">
@@ -266,7 +274,15 @@ export default function StudioPage() {
                   <div className={`chat-message__author ${msg.role === 'agent' ? 'chat-message__author--agent' : ''}`}>
                     {msg.role === 'user' ? '👤 You' : `🎬 ${msg.agent || 'Agent'}`}
                   </div>
-                  <div className="chat-message__text">{msg.text}</div>
+                  {msg.role === 'agent' ? (
+                    <div className="markdown-body">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.text}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="chat-message__text">{msg.text}</div>
+                  )}
                 </div>
               ))}
 
