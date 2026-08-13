@@ -14,10 +14,52 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
-# ── Enums ─────────────────────────────────────────────────────────────
+# ── Enums & Normalization ──────────────────────────────────────────────
+
+def normalize_enum(value: str | Enum | None, enum_class: type[Enum]) -> Enum:
+    """Fuzzy-match a free-text string to an enum member with fallback to default."""
+    if value is None:
+        return list(enum_class)[0]
+    if isinstance(value, enum_class):
+        return value
+    if not isinstance(value, str):
+        return list(enum_class)[0]
+
+    lowered = value.lower().strip()
+
+    # 1. Exact value match
+    for member in enum_class:
+        if member.value == value or member.value == lowered:
+            return member
+
+    # 2. Name match
+    for member in enum_class:
+        if member.name.lower() == lowered:
+            return member
+
+    # 3. Slug match (strip quotes, exclamation marks, replace spaces/dashes with underscores)
+    slug = (
+        lowered.replace("'", "")
+        .replace("!", "")
+        .replace("?", "")
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    for member in enum_class:
+        if member.value == slug or member.name.lower() == slug:
+            return member
+
+    # 4. Substring match
+    for member in enum_class:
+        if member.value in slug or slug in member.value:
+            return member
+
+    # 5. Fallback to first member of enum
+    return list(enum_class)[0]
+
 
 class ScriptFormat(str, Enum):
     FEATURE = "feature"
@@ -196,6 +238,22 @@ class ScriptState(BaseModel):
     format: ScriptFormat = ScriptFormat.FEATURE
     logline: str = ""
     framework: StructuralFramework = StructuralFramework.THREE_ACT
+
+    @field_validator("genre", mode="before")
+    @classmethod
+    def validate_genre(cls, v):
+        return normalize_enum(v, Genre)
+
+    @field_validator("format", mode="before")
+    @classmethod
+    def validate_format(cls, v):
+        return normalize_enum(v, ScriptFormat)
+
+    @field_validator("framework", mode="before")
+    @classmethod
+    def validate_framework(cls, v):
+        return normalize_enum(v, StructuralFramework)
+
 
     # Story structure
     beat_sheet: list[Beat] = Field(default_factory=list)

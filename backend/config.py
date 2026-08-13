@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     gemini_tts_model: str = "gemini-2.5-flash-tts"
     gemini_image_model: str = "gemini-3-pro-image"
     gemini_embedding_model: str = "text-embedding-004"
+    lyria_music_model: str = "lyria-3-pro-preview"
+    lyria_music_clip_model: str = "lyria-3-clip-preview"
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"
