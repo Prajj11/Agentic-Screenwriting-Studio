@@ -36,7 +36,11 @@ async def generate_mood_board(scene_description: str, style_hints: str = "") -> 
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=settings.gemini_api_key)
+        client = genai.Client(
+            enterprise=True,
+            project=settings.gcp_project_id,
+            location=settings.gcp_location
+        )
 
         # Build the prompt
         prompt = f"Cinematic concept art for a screenplay scene: {scene_description}"
@@ -48,12 +52,14 @@ async def generate_mood_board(scene_description: str, style_hints: str = "") -> 
         )
 
         # Generate the image
-        response = client.models.generate_images(
+        response = client.models.generate_content(
             model=settings.gemini_image_model,
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+                image_config=types.ImageConfig(
+                    aspect_ratio="16:9",
+                ),
             ),
         )
 
@@ -64,8 +70,16 @@ async def generate_mood_board(scene_description: str, style_hints: str = "") -> 
         filename = f"mood_{uuid.uuid4().hex[:8]}.jpg"
         filepath = output_dir / filename
 
-        if response.generated_images:
-            image_data = response.generated_images[0].image.image_bytes
+        image_data = None
+        if response.candidates and response.candidates[0].content:
+            for part in response.candidates[0].content.parts:
+                if getattr(part, "thought", None):
+                    continue
+                if part.inline_data:
+                    image_data = part.inline_data.data
+                    break
+
+        if image_data:
             with open(filepath, "wb") as f:
                 f.write(image_data)
 

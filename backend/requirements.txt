@@ -1,5 +1,5 @@
-# Google ADK & Gemini
-google-adk>=1.2.0
+# Google ADK & Vertex AI
+google-cloud-aiplatform[agent_engines,adk]>=1.101.0
 google-genai>=1.14.0
 
 # Web Framework
@@ -9,6 +9,7 @@ websockets>=14.0
 
 # Database
 aiosqlite>=0.21.0
+sqlalchemy>=2.0.0
 
 # Vector Store & MCP Server
 chromadb>=0.6.0

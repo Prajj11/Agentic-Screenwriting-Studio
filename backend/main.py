@@ -13,6 +13,10 @@ import json
 import logging
 import os
 import sys
+
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+os.environ["GOOGLE_CLOUD_PROJECT"] = "gen-lang-client-0423661956"
+os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -187,7 +191,9 @@ def _get_showrunner():
     """Lazy-initialize the Showrunner agent."""
     global _showrunner
     if _showrunner is None:
-        os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
+        import vertexai
+        if settings.gcp_project_id:
+            vertexai.init(project=settings.gcp_project_id, location=settings.gcp_location)
         from agents.showrunner import create_showrunner
         _showrunner = create_showrunner()
     return _showrunner
@@ -339,7 +345,10 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
                     await broadcast_event(ws_event)
 
     except Exception as e:
-        logger.error(f"Agent error: {e}", exc_info=True)
+        import traceback
+        with open("error_trace.txt", "w") as f:
+            f.write(traceback.format_exc())
+        logger.error(f"Error running showrunner: {e}")
         response_parts.append(f"I encountered an error: {str(e)}. Let me try a different approach.")
         
     finally:

@@ -103,14 +103,13 @@ export default function StudioPage() {
 
     // Warm up the DB-backed ADK session so the next chat message succeeds
     recoverSession(storedId)
-      .then(() => {
+      .then((result) => {
+        if (!result) return; // backend not ready yet — that's fine
         // Also reload the script state so the UI populates after refresh
         return getScriptState(storedId);
       })
-      .then(setScriptState)
-      .catch((err) =>
-        console.warn('Session recovery failed (non-fatal):', err)
-      );
+      .then((state) => { if (state) setScriptState(state); })
+      .catch(() => {}); // fully silent — retries handled inside api.ts
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount
 
@@ -169,10 +168,12 @@ export default function StudioPage() {
         await refreshScriptState(response.project_id);
       }
     } catch (error) {
+      const errorText = error instanceof Error ? error.message : 'Unknown error';
+      // Only show the error if it's a real persistent failure (retries already exhausted in api.ts)
       const errMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'agent',
-        text: `⚠️ Connection error. Make sure the backend is running on http://localhost:8000\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        text: `⚠️ The backend server took too long to respond. This usually means it's still starting up.\n\nPlease wait a few seconds and try again.\n\n_(${errorText})_`,
         agent: 'System',
         timestamp: new Date().toISOString(),
       };
@@ -340,8 +341,9 @@ export default function StudioPage() {
               <button
                 className="chat-send-btn"
                 onClick={() => handleSend()}
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || input.trim() === ''}
                 aria-label="Send message"
+                suppressHydrationWarning
               >
                 ▶
               </button>

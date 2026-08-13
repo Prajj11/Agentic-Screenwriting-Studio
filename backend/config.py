@@ -16,8 +16,9 @@ load_dotenv(_backend_dir / ".env")
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # ── API Keys ──────────────────────────────────────────────────────
-    gemini_api_key: str = ""
+    # ── API Keys & GCP Credentials ──────────────────────────────────────────────────────
+    gcp_project_id: str = ""
+    gcp_location: str = "us-central1"
     parallel_api_key: str = ""
 
     # ── Grafana ───────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
     gemini_main_model: str = "gemini-2.5-flash"
     gemini_pro_model: str = "gemini-2.5-pro"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
-    gemini_image_model: str = "imagen-3.0-generate-002"
+    gemini_image_model: str = "gemini-3-pro-image"
     gemini_embedding_model: str = "text-embedding-004"
 
     # ── Server ────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
     def ensure_directories(self):
         """Create all required output and data directories."""

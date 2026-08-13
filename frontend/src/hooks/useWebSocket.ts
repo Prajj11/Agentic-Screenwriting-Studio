@@ -15,6 +15,7 @@ export function useWebSocket(onEvent?: (event: WSEvent) => void) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
+  const attemptRef = useRef(0);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -24,6 +25,7 @@ export function useWebSocket(onEvent?: (event: WSEvent) => void) {
 
       ws.onopen = () => {
         setConnected(true);
+        attemptRef.current = 0; // reset backoff on success
         console.log('[WS] Connected');
       };
 
@@ -38,18 +40,22 @@ export function useWebSocket(onEvent?: (event: WSEvent) => void) {
 
       ws.onclose = () => {
         setConnected(false);
-        console.log('[WS] Disconnected, reconnecting in 3s...');
-        reconnectTimer.current = setTimeout(connect, 3000);
+        // Exponential backoff: 3s, 6s, 12s, cap at 30s
+        const delay = Math.min(3000 * Math.pow(2, attemptRef.current), 30000);
+        attemptRef.current += 1;
+        reconnectTimer.current = setTimeout(connect, delay);
       };
 
-      ws.onerror = (err) => {
-        console.warn('[WS] Error:', err);
+      ws.onerror = () => {
+        // Silently close — onclose will handle reconnection
         ws.close();
       };
 
       wsRef.current = ws;
     } catch {
-      reconnectTimer.current = setTimeout(connect, 3000);
+      const delay = Math.min(3000 * Math.pow(2, attemptRef.current), 30000);
+      attemptRef.current += 1;
+      reconnectTimer.current = setTimeout(connect, delay);
     }
   }, [onEvent]);
 

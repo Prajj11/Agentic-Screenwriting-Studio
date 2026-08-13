@@ -80,7 +80,11 @@ async def check_clearance(scene_text: str) -> str:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=settings.gemini_api_key)
+        client = genai.Client(
+            vertexai=True,
+            project=settings.gcp_project_id,
+            location=settings.gcp_location
+        )
 
         response = client.models.generate_content(
             model=settings.gemini_main_model,

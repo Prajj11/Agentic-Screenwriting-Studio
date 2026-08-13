@@ -72,7 +72,11 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                 "error": "No dialogue found in the scene.",
             })
 
-        client = genai.Client(api_key=settings.gemini_api_key)
+        client = genai.Client(
+            vertexai=True,
+            project=settings.gcp_project_id,
+            location=settings.gcp_location
+        )
 
         # Assign voices to all characters
         characters = list(set(dl.get("character", "") for dl in dialogue))

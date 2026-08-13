@@ -105,7 +105,12 @@ class ClickHouseVectorStore:
             return [0.0] * EMBEDDING_DIM
 
         try:
-            client = genai.Client()
+            import os
+            client = genai.Client(
+                vertexai=True,
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+            )
             result = client.models.embed_content(
                 model=self.embedding_model,
                 contents=text,

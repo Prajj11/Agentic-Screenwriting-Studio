@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "C:\Users\naren\Music\Agentic-Screenwriting-Studio\backend\main.py", line 300, in _run_agent
+    async for event in runner.run_async(
+  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\runners.py", line 1111, in run_async
+    async for event in agen:
+  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\runners.py", line 623, in _run_node_async
+    async for event in agen:
+  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\runners.py", line 882, in _consume_event_queue
+    await self.session_service.append_event(
+  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\sessions\database_session_service.py", line 821, in append_event
+    raise ValueError(_STALE_SESSION_ERROR_MESSAGE)
+ValueError: The session has been modified in storage since it was loaded. Please reload the session before appending more events.
