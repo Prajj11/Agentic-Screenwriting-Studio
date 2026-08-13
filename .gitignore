@@ -55,3 +55,12 @@ backend/data/*.sqlite3
 backend/data/*.db-shm
 backend/data/*.db-wal
 backend/data/chroma_db/
+
+# Generated output & scratch
+backend/output/
+*.zip
+error_trace.txt
+test_key.py
+notebook_*.py
+notebook_*.md
+Agentic-Screenwriting-Studio/

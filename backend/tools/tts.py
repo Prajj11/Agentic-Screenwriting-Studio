@@ -106,7 +106,11 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                 speaker_configs.append(
                     types.SpeakerVoiceConfig(
                         speaker=char,
-                        voice_name=voice_map[char],
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice_map[char]
+                            )
+                        ),
                     )
                 )
 
@@ -140,7 +144,11 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                 speaker_configs = [
                     types.SpeakerVoiceConfig(
                         speaker=char,
-                        voice_name=voice_map.get(char, AVAILABLE_VOICES[0]),
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice_map.get(char, AVAILABLE_VOICES[0])
+                            )
+                        ),
                     )
                     for char in seg_chars[:2]
                 ]

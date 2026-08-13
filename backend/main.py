@@ -43,91 +43,99 @@ from db.vector_router import get_vector_store
 from tools.script_state import set_active_state, get_active_state_sync, _active_states, _normalize_enum
 
 # ── Gemini Rate Limit Monkey Patch ──────────────────────────────────────
-import asyncio
 import time
-from google.genai.models import AsyncModels, Models
+try:
+    from google.genai.models import AsyncModels, Models
+    _GENAI_PATCH_AVAILABLE = True
+except ImportError:
+    _GENAI_PATCH_AVAILABLE = False
 
-# Async patch
-_orig_async_generate_content = AsyncModels.generate_content
-_orig_async_generate_content_stream = AsyncModels.generate_content_stream
+if _GENAI_PATCH_AVAILABLE:
+    # Async patch
+    _orig_async_generate_content = AsyncModels.generate_content
+    _orig_async_generate_content_stream = AsyncModels.generate_content_stream
 
-async def _patched_async_generate_content(self, *args, **kwargs):
-    retries = 7
-    delay = 4.0
-    for attempt in range(retries):
-        try:
-            return await _orig_async_generate_content(self, *args, **kwargs)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
-                if attempt == retries - 1:
+    async def _patched_async_generate_content(self, *args, **kwargs):
+        retries = 7
+        delay = 4.0
+        for attempt in range(retries):
+            try:
+                return await _orig_async_generate_content(self, *args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                    if attempt == retries - 1:
+                        raise
+                    logging.getLogger("studio").warning(f"Rate limited (429). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                else:
                     raise
-                logger.warning(f"Rate limited (429). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
-                await asyncio.sleep(delay)
-                delay *= 2
-            else:
-                raise
 
-async def _patched_async_generate_content_stream(self, *args, **kwargs):
-    retries = 7
-    delay = 4.0
-    for attempt in range(retries):
-        try:
-            return await _orig_async_generate_content_stream(self, *args, **kwargs)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
-                if attempt == retries - 1:
+    async def _patched_async_generate_content_stream(self, *args, **kwargs):
+        retries = 7
+        delay = 4.0
+        for attempt in range(retries):
+            try:
+                return await _orig_async_generate_content_stream(self, *args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                    if attempt == retries - 1:
+                        raise
+                    logging.getLogger("studio").warning(f"Rate limited (429) in stream. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                else:
                     raise
-                logger.warning(f"Rate limited (429) in stream. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
-                await asyncio.sleep(delay)
-                delay *= 2
-            else:
-                raise
 
-AsyncModels.generate_content = _patched_async_generate_content
-AsyncModels.generate_content_stream = _patched_async_generate_content_stream
+    AsyncModels.generate_content = _patched_async_generate_content
+    AsyncModels.generate_content_stream = _patched_async_generate_content_stream
 
-# Sync patch
-_orig_generate_content = Models.generate_content
-_orig_generate_images = Models.generate_images
+    # Sync patch
+    _orig_generate_content = Models.generate_content
 
-def _patched_generate_content(self, *args, **kwargs):
-    retries = 7
-    delay = 4.0
-    for attempt in range(retries):
-        try:
-            return _orig_generate_content(self, *args, **kwargs)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
-                if attempt == retries - 1:
+    def _patched_generate_content(self, *args, **kwargs):
+        retries = 7
+        delay = 4.0
+        for attempt in range(retries):
+            try:
+                return _orig_generate_content(self, *args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                    if attempt == retries - 1:
+                        raise
+                    logging.getLogger("studio").warning(f"Rate limited (429) in sync call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                    time.sleep(delay)
+                    delay *= 2
+                else:
                     raise
-                logger.warning(f"Rate limited (429) in sync call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
-                time.sleep(delay)
-                delay *= 2
-            else:
-                raise
 
-def _patched_generate_images(self, *args, **kwargs):
-    retries = 7
-    delay = 4.0
-    for attempt in range(retries):
-        try:
-            return _orig_generate_images(self, *args, **kwargs)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
-                if attempt == retries - 1:
-                    raise
-                logger.warning(f"Rate limited (429) in images call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
-                time.sleep(delay)
-                delay *= 2
-            else:
-                raise
+    Models.generate_content = _patched_generate_content
 
-Models.generate_content = _patched_generate_content
-Models.generate_images = _patched_generate_images
+    # Patch generate_images only if it exists on this SDK version
+    if hasattr(Models, 'generate_images'):
+        _orig_generate_images = Models.generate_images
+
+        def _patched_generate_images(self, *args, **kwargs):
+            retries = 7
+            delay = 4.0
+            for attempt in range(retries):
+                try:
+                    return _orig_generate_images(self, *args, **kwargs)
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                        if attempt == retries - 1:
+                            raise
+                        logging.getLogger("studio").warning(f"Rate limited (429) in images call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                        time.sleep(delay)
+                        delay *= 2
+                    else:
+                        raise
+
+        Models.generate_images = _patched_generate_images
 # ──────────────────────────────────────────────────────────────────────
 # ── Logging ───────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -277,6 +285,7 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
     """
     Run the Showrunner agent with a user message and return the response.
     Returns (response_text, events).
+    Handles stale session errors by recreating the session and retrying once.
     """
     runner = await _get_runner()
     events_list = []
@@ -296,66 +305,87 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
         parts=[types.Part(text=full_message)],
     )
 
-    try:
-        async for event in runner.run_async(
-            user_id="user",
-            session_id=session_id,
-            new_message=content,
-        ):
-            # Track agent activity
-            author = getattr(event, 'author', '') or ''
-            
-            if author and author in _agent_statuses:
-                _agent_statuses[author]["status"] = "working"
-                _agent_statuses[author]["last_active"] = datetime.now().isoformat()
+    max_stale_retries = 2
+    for stale_attempt in range(max_stale_retries):
+        try:
+            async for event in runner.run_async(
+                user_id="user",
+                session_id=session_id,
+                new_message=content,
+            ):
+                # Track agent activity
+                author = getattr(event, 'author', '') or ''
+                
+                if author and author in _agent_statuses:
+                    _agent_statuses[author]["status"] = "working"
+                    _agent_statuses[author]["last_active"] = datetime.now().isoformat()
 
-            # Collect text responses
-            if hasattr(event, 'content') and event.content:
-                if hasattr(event.content, 'parts') and event.content.parts:
-                    for part in event.content.parts:
-                        if hasattr(part, 'text') and part.text:
-                            txt = part.text.strip()
-                            if txt and txt not in response_parts:
-                                response_parts.append(txt)
-                                ws_event = {
-                                    "type": "text_chunk",
-                                    "agent": author,
-                                    "content": txt,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-                                events_list.append(ws_event)
-                                await broadcast_event(ws_event)
+                # Collect text responses
+                if hasattr(event, 'content') and event.content:
+                    if hasattr(event.content, 'parts') and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                txt = part.text.strip()
+                                if txt and txt not in response_parts:
+                                    response_parts.append(txt)
+                                    ws_event = {
+                                        "type": "text_chunk",
+                                        "agent": author,
+                                        "content": txt,
+                                        "timestamp": datetime.now().isoformat(),
+                                    }
+                                    events_list.append(ws_event)
+                                    await broadcast_event(ws_event)
 
-            if hasattr(event, 'text') and event.text:
-                txt = str(event.text).strip()
-                if txt and txt not in response_parts:
-                    response_parts.append(txt)
+                if hasattr(event, 'text') and event.text:
+                    txt = str(event.text).strip()
+                    if txt and txt not in response_parts:
+                        response_parts.append(txt)
 
-            # Track tool calls
-            if hasattr(event, 'function_calls') and event.function_calls:
-                for fc in event.function_calls:
-                    ws_event = {
-                        "type": "tool_call",
-                        "agent": author,
-                        "content": f"Calling: {fc.name}",
-                        "metadata": {"tool": fc.name},
-                        "timestamp": datetime.now().isoformat(),
-                    }
-                    events_list.append(ws_event)
-                    await broadcast_event(ws_event)
+                # Track tool calls
+                if hasattr(event, 'function_calls') and event.function_calls:
+                    for fc in event.function_calls:
+                        ws_event = {
+                            "type": "tool_call",
+                            "agent": author,
+                            "content": f"Calling: {fc.name}",
+                            "metadata": {"tool": fc.name},
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        events_list.append(ws_event)
+                        await broadcast_event(ws_event)
 
-    except Exception as e:
-        import traceback
-        with open("error_trace.txt", "w") as f:
-            f.write(traceback.format_exc())
-        logger.error(f"Error running showrunner: {e}")
-        response_parts.append(f"I encountered an error: {str(e)}. Let me try a different approach.")
+            # If we get here without error, break out of retry loop
+            break
+
+        except ValueError as ve:
+            # Handle stale session error from ADK DatabaseSessionService
+            if "stale" in str(ve).lower() or "modified in storage" in str(ve).lower():
+                if stale_attempt < max_stale_retries - 1:
+                    logger.warning(f"Stale session detected for project '{project_id}', recreating session and retrying...")
+                    # Force-recreate the session
+                    _sessions.pop(project_id, None)
+                    session_id = await _get_or_create_session(runner, project_id)
+                    events_list.clear()
+                    response_parts.clear()
+                    continue
+                else:
+                    raise
+            else:
+                raise
+
+        except Exception as e:
+            import traceback
+            with open("error_trace.txt", "w") as f:
+                f.write(traceback.format_exc())
+            logger.error(f"Error running showrunner: {e}")
+            response_parts.append(f"I encountered an error: {str(e)}. Let me try a different approach.")
+            break
         
-    finally:
-        # Reset agent statuses
-        for name in _agent_statuses:
-            if _agent_statuses[name]["status"] == "working":
-                _agent_statuses[name]["status"] = "idle"
+    # Reset agent statuses
+    for name in _agent_statuses:
+        if _agent_statuses[name]["status"] == "working":
+            _agent_statuses[name]["status"] = "idle"
 
     if response_parts:
         response_text = "\n\n".join(response_parts)

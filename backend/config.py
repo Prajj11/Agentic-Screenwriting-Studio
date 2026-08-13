@@ -45,10 +45,8 @@ class Settings(BaseSettings):
     gemini_main_model: str = "gemini-2.5-flash"
     gemini_pro_model: str = "gemini-2.5-pro"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
-    gemini_image_model: str = "gemini-3-pro-image"
+    gemini_image_model: str = "imagen-3.0-generate-002"
     gemini_embedding_model: str = "text-embedding-004"
-    lyria_music_model: str = "lyria-3-pro-preview"
-    lyria_music_clip_model: str = "lyria-3-clip-preview"
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"
@@ -76,6 +74,30 @@ class Settings(BaseSettings):
             self.output_audio_dir,
         ]:
             Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+    def get_secret(self, secret_id: str) -> str:
+        """
+        Securely retrieve a secret from Google Cloud Secret Manager.
+        Returns the environment variable if present, otherwise falls back to Secret Manager.
+        """
+        # First check if it's already loaded via environment
+        val = getattr(self, secret_id, None)
+        if val:
+            return val
+            
+        if not self.gcp_project_id:
+            return ""
+            
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{self.gcp_project_id}/secrets/{secret_id}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            return response.payload.data.decode("UTF-8")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Secret Manager failed to fetch {secret_id}: {e}")
+            return ""
 
 
 # ── Gemini Safety Settings ────────────────────────────────────────────

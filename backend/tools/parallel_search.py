@@ -21,12 +21,9 @@ PARALLEL_API_BASE = "https://api.parallel.ai/v1"
 
 
 def _get_api_key() -> str:
-    """Get the Parallel API key from environment."""
-    key = os.environ.get("PARALLEL_API_KEY", "")
-    if not key:
-        from config import settings
-        key = settings.parallel_api_key
-    return key
+    """Get the Parallel API key from environment or Secret Manager."""
+    from config import settings
+    return settings.get_secret("parallel_api_key")
 
 
 async def research_fact(query: str) -> str:
