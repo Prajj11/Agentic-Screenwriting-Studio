@@ -18,6 +18,7 @@ from tools.script_state import (
     get_continuity_log,
     get_scene,
     mark_scene_reviewed,
+    get_character_bible,
 )
 from tools.vector_store import (
     query_relevant_context,
@@ -114,6 +115,7 @@ def create_continuity_checker() -> LlmAgent:
             get_scene,
             mark_scene_reviewed,
             query_relevant_context,
+            get_character_bible,
         ],
     )
 

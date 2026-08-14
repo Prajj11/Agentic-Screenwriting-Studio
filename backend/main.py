@@ -146,7 +146,7 @@ app = FastAPI(
 # CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:3001"],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -407,6 +407,55 @@ async def health_clickhouse():
 
 # ── Chat Endpoint ─────────────────────────────────────────────────────
 
+@app.get("/api/chat/history/{project_id}")
+async def get_chat_history(project_id: str):
+    """Retrieve chat history for a project from ADK sessions."""
+    runner = await _get_runner()
+    session_id = await _get_or_create_session(runner, project_id)
+    try:
+        session = await runner.session_service.get_session(
+            app_name="screenwriting_studio",
+            user_id="user",
+            session_id=session_id
+        )
+        if not session or not hasattr(session, 'events'):
+            return {"messages": []}
+            
+        messages = []
+        for event in session.events:
+            role = "agent"
+            author = getattr(event, 'author', '')
+            if getattr(event, 'message', None):
+                if getattr(event.message, 'role', '') == "user":
+                    role = "user"
+            
+            txt = ""
+            if hasattr(event, 'text') and event.text:
+                txt = event.text
+            elif hasattr(event, 'content') and event.content and hasattr(event.content, 'parts'):
+                parts = [p.text for p in event.content.parts if hasattr(p, 'text') and p.text]
+                txt = "\n".join(parts)
+                
+            if txt and not (role == "agent" and author != "Showrunner"):
+                messages.append({
+                    "id": getattr(event, 'id', str(uuid.uuid4())),
+                    "role": role,
+                    "text": txt,
+                    "agent": author if role == "agent" else None,
+                    "timestamp": getattr(event, 'timestamp', datetime.now().isoformat())
+                })
+                
+        # De-duplicate contiguous identical texts or system logs
+        filtered = []
+        for m in messages:
+            if not filtered or filtered[-1]["text"] != m["text"]:
+                filtered.append(m)
+                
+        return {"messages": filtered}
+    except Exception as e:
+        logger.error(f"Error fetching history: {e}")
+        return {"messages": []}
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Send a message to the Showrunner and get a response."""
@@ -495,11 +544,25 @@ async def create_project(request: CreateProjectRequest):
     )
 
 
+
 @app.get("/api/projects")
 async def list_projects():
     """List all projects."""
     store = await get_sqlite_store()
     return await store.list_projects()
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str):
+    """Delete a project by ID."""
+    store = await get_sqlite_store()
+    deleted = await store.delete_project(project_id)
+    # Also remove from in-memory cache if present
+    _active_states.pop(project_id, None)
+    _sessions.pop(project_id, None)
+    if not deleted:
+        raise HTTPException(404, f"Project {project_id} not found")
+    return {"status": "deleted", "project_id": project_id}
 
 
 @app.get("/api/script/{project_id}")

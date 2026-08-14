@@ -335,3 +335,31 @@ async def mark_scene_reviewed(project_id: str, scene_number: int, issues_json: s
         "status": "reviewed",
         "issues_found": len(scene.continuity_issues),
     })
+
+
+async def attach_media_to_scene(project_id: str, scene_number: int, media_type: str, url: str) -> str:
+    """
+    Attach a generated media URL to a scene in the Script State.
+    media_type should be either 'mood_board_image' or 'table_read_audio'.
+    """
+    state = await _get_state(project_id)
+    scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+    if not scene:
+        return json.dumps({"success": False, "error": f"Scene {scene_number} not found."})
+
+    if media_type == "mood_board_image":
+        scene.mood_board_image = url
+    elif media_type == "table_read_audio":
+        scene.table_read_audio = url
+    else:
+        return json.dumps({"success": False, "error": "Invalid media_type."})
+
+    await _save_state(project_id)
+
+    return json.dumps({
+        "success": True,
+        "scene_number": scene_number,
+        "media_type": media_type,
+        "url": url,
+        "message": f"Successfully attached {media_type} to scene {scene_number}."
+    })

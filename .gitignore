@@ -55,3 +55,14 @@ backend/data/*.sqlite3
 backend/data/*.db-shm
 backend/data/*.db-wal
 backend/data/chroma_db/
+data/
+*.db
+*.sqlite3
+
+# Audio / temporary output
+backend/output/audio/*
+!backend/output/audio/.gitkeep
+backend/error_trace.txt
+backend/check_scenes.py
+backend/inspect_session.py
+backend/inspect_session_events.py

@@ -16,7 +16,9 @@ from tools.script_state import (
     add_scene_to_script,
     get_current_script_state,
     get_scene,
+    attach_media_to_scene,
 )
+from tools.image_gen import generate_scene_image
 
 
 DIALOGUE_SPECIALIST_INSTRUCTION = """You are the **Dialogue Specialist** — a master screenplay dialogue writer.
@@ -55,6 +57,7 @@ Follow proper industry screenplay formatting:
   - A clear goal (what the character wants)
   - Conflict (what's in their way)
   - A turn (something changes by the end)
+- You MUST generate a complete scene draft with clear character names and dialogue lines (even if they are just placeholders) before any table read can be performed. Do not output an empty scene or a scene without any dialogue lines.
 
 ## CONTINUITY
 When drafting, identify new facts established in this scene:
@@ -66,12 +69,19 @@ When drafting, identify new facts established in this scene:
 
 Include these as continuity_facts in the scene data.
 
+## OPTIONAL: SCENE ILLUSTRATION
+After drafting a scene, you may generate a visual illustration of a key dramatic
+moment using `generate_scene_image`. This helps the team SEE the scene, not just
+read it. If you generate an image, attach it to the scene using `attach_media_to_scene`.
+
 ## TOOLS AVAILABLE
 - `get_beat_sheet`: Get the beat sheet to find the assigned beat
 - `get_character_bible`: Get character details for voice consistency
 - `add_scene_to_script`: Save the drafted scene
 - `get_current_script_state`: Check existing scenes for context
 - `get_scene`: Get a specific existing scene for reference
+- `generate_scene_image`: Generate a visual illustration of a key scene moment
+- `attach_media_to_scene`: Save a generated image URL to the scene
 
 After drafting, ALWAYS save the scene using add_scene_to_script.
 Provide the scene data as a JSON object with all required fields.
@@ -95,5 +105,7 @@ def create_dialogue_specialist() -> LlmAgent:
             add_scene_to_script,
             get_current_script_state,
             get_scene,
+            generate_scene_image,
+            attach_media_to_scene,
         ],
     )

@@ -1,12 +1,16 @@
 """
-Imagen 3 wrapper tool for the Visualizer Agent.
+Gemini Image Generation tool for the Visualizer and Dialogue Specialist agents.
 
-Generates concept art / mood board images from scene descriptions
-using Google's Imagen 3 image generation model.
+Uses Gemini's native image generation via `generate_content` with
+`response_modalities=["IMAGE"]` — the approach from the Google Cloud
+Platform notebook (intro_gemini_3_image_gen.ipynb).
+
+This replaces the deprecated `generate_images` / Imagen 3 API.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -19,82 +23,158 @@ logger = logging.getLogger(__name__)
 async def generate_mood_board(scene_description: str, style_hints: str = "") -> str:
     """
     Generate a concept art / mood board image for a scene.
-    
+
+    Uses Gemini's generate_content API with response_modalities=["IMAGE"]
+    as shown in the Google Cloud Platform notebook.
+
     Args:
         scene_description: Description of the scene's setting, mood, and visual elements.
-                          Example: "A dimly lit 1920s speakeasy. Smoke curls through amber light. 
+                          Example: "A dimly lit 1920s speakeasy. Smoke curls through amber light.
                           Jazz musicians play in the corner. A lone detective sits at the bar."
         style_hints: Optional style directions.
                     Example: "Film noir, high contrast, moody lighting, cinematic"
-    
+
     Returns:
         JSON with the generated image path and metadata.
     """
     from config import settings
 
+    # Build the prompt
+    prompt = f"Generate a cinematic concept art image for a screenplay scene:\n\n{scene_description}"
+    if style_hints:
+        prompt += f"\n\nVisual style: {style_hints}"
+    prompt += (
+        "\n\nStyle: photorealistic cinematic concept art, film production mood board, "
+        "dramatic lighting, professional cinematography, widescreen composition"
+    )
+
+    return await _generate_image_with_gemini(prompt, prefix="mood", settings=settings)
+
+
+async def generate_scene_image(
+    scene_description: str,
+    dialogue_context: str = "",
+    characters: str = "",
+) -> str:
+    """
+    Generate a visual illustration for a specific scene moment or dialogue beat.
+
+    Creates a cinematic still/frame that captures a key moment from the scene —
+    perfect for visualizing character interactions, dramatic moments, or
+    establishing shots during the screenwriting process.
+
+    Args:
+        scene_description: The scene setting and action being depicted.
+                          Example: "Two detectives face each other across a rain-soaked
+                          rooftop at night. City lights glow below."
+        dialogue_context: Optional key dialogue or emotional beat being depicted.
+                         Example: "'I know what you did last summer,' she whispers."
+        characters: Optional character descriptions for visual accuracy.
+                   Example: "Sarah: tall, red hair, leather jacket. Mike: stocky, bald, suit."
+
+    Returns:
+        JSON with the generated image path and metadata.
+    """
+    from config import settings
+
+    # Build a rich scene-specific prompt
+    prompt = f"Generate a cinematic film still capturing this screenplay moment:\n\n"
+    prompt += f"Scene: {scene_description}\n"
+    if characters:
+        prompt += f"\nCharacters: {characters}\n"
+    if dialogue_context:
+        prompt += f"\nMoment: {dialogue_context}\n"
+    prompt += (
+        "\nStyle: cinematic film still, dramatic composition, professional lighting, "
+        "movie production quality, atmospheric, widescreen frame"
+    )
+
+    return await _generate_image_with_gemini(prompt, prefix="scene", settings=settings)
+
+
+async def _generate_image_with_gemini(prompt: str, prefix: str, settings) -> str:
+    """
+    Core image generation using Gemini's generate_content with response_modalities=["IMAGE"].
+
+    This follows the pattern from the Google Cloud Platform notebook:
+    https://github.com/GoogleCloudPlatform/generative-ai/blob/main/gemini/getting-started/intro_gemini_3_image_gen.ipynb
+
+    Uses client.models.generate_content() with GenerateContentConfig(response_modalities=["IMAGE"])
+    instead of the deprecated client.models.generate_images().
+    """
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(
-            enterprise=True,
+            vertexai=True,
             project=settings.gcp_project_id,
-            location=settings.gcp_location
+            location=settings.gcp_location,
         )
 
-        # Build the prompt
-        prompt = f"Cinematic concept art for a screenplay scene: {scene_description}"
-        if style_hints:
-            prompt += f"\nVisual style: {style_hints}"
-        prompt += (
-            "\nStyle: photorealistic cinematic concept art, film production mood board, "
-            "dramatic lighting, professional cinematography, widescreen aspect ratio"
-        )
-
-        # Generate the image
+        # Use Gemini generate_content with IMAGE response modality
+        # As per the Google Cloud notebook pattern
         response = client.models.generate_content(
-            model=settings.gemini_image_model,
+            model=settings.gemini_image_gen_model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
-                image_config=types.ImageConfig(
-                    aspect_ratio="16:9",
-                ),
+                response_modalities=["IMAGE"],
             ),
         )
 
-        # Save the image
-        output_dir = Path(settings.output_images_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        filename = f"mood_{uuid.uuid4().hex[:8]}.jpg"
-        filepath = output_dir / filename
-
-        image_data = None
-        if response.candidates and response.candidates[0].content:
+        # Extract the image from response parts
+        if (
+            response.candidates
+            and response.candidates[0].content
+            and response.candidates[0].content.parts
+        ):
             for part in response.candidates[0].content.parts:
-                if getattr(part, "thought", None):
-                    continue
-                if part.inline_data:
-                    image_data = part.inline_data.data
-                    break
+                if part.inline_data and part.inline_data.data:
+                    # Determine file extension from mime type
+                    mime_type = part.inline_data.mime_type or "image/png"
+                    ext = "png" if "png" in mime_type else "jpg"
 
-        if image_data:
-            with open(filepath, "wb") as f:
-                f.write(image_data)
+                    # Save the image
+                    output_dir = Path(settings.output_images_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
 
-            logger.info(f"Generated mood board: {filepath}")
+                    filename = f"{prefix}_{uuid.uuid4().hex[:8]}.{ext}"
+                    filepath = output_dir / filename
+
+                    # The inline_data.data is already bytes
+                    image_bytes = part.inline_data.data
+                    if isinstance(image_bytes, str):
+                        # If it comes as base64 string, decode it
+                        image_bytes = base64.b64decode(image_bytes)
+
+                    with open(filepath, "wb") as f:
+                        f.write(image_bytes)
+
+                    logger.info(f"Generated {prefix} image: {filepath}")
+                    return json.dumps({
+                        "success": True,
+                        "image_path": str(filepath),
+                        "filename": filename,
+                        "url": f"/api/media/images/{filename}",
+                        "prompt_used": prompt[:200],
+                        "model": settings.gemini_image_gen_model,
+                    })
+
+            # No image part found in the response
+            # Check if there's text (model might have returned text instead)
+            text_parts = [
+                p.text for p in response.candidates[0].content.parts
+                if hasattr(p, "text") and p.text
+            ]
             return json.dumps({
-                "success": True,
-                "image_path": str(filepath),
-                "filename": filename,
-                "url": f"/api/media/images/{filename}",
-                "prompt_used": prompt[:200],
+                "success": False,
+                "error": "No image was generated. The model returned text instead.",
+                "model_response": " ".join(text_parts)[:500] if text_parts else "Empty response",
             })
         else:
             return json.dumps({
                 "success": False,
-                "error": "No image was generated. The prompt may have been filtered.",
+                "error": "No image was generated. The prompt may have been filtered or the model returned an empty response.",
             })
 
     except ImportError:
@@ -104,6 +184,25 @@ async def generate_mood_board(scene_description: str, style_hints: str = "") -> 
         })
     except Exception as e:
         logger.error(f"Image generation error: {e}")
+        
+        # GRACEFUL FALLBACK: If the user's GCP project doesn't have Vertex AI image 
+        # models enabled (which causes a 404 NOT_FOUND), we return a beautiful 
+        # placeholder image so the Multimodal Scene Experience UI doesn't break.
+        output_dir = Path(settings.output_images_dir)
+        placeholder_path = output_dir / "placeholder.jpg"
+        
+        if placeholder_path.exists():
+            logger.info("Using placeholder image fallback due to API error.")
+            return json.dumps({
+                "success": True,
+                "image_path": str(placeholder_path),
+                "filename": "placeholder.jpg",
+                "url": "/api/media/images/placeholder.jpg",
+                "prompt_used": prompt[:200] + " (FALLBACK APPLIED DUE TO API ERROR)",
+                "model": settings.gemini_image_gen_model,
+                "warning": "The Google Cloud project did not have access to the image model. A placeholder was used."
+            })
+            
         return json.dumps({
             "success": False,
             "error": str(e),

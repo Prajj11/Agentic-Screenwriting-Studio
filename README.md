@@ -24,7 +24,7 @@ A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a 
 | **Dialogue Specialist** | Drafts full scenes with dialogue | Gemini + Character Bible |
 | **Continuity Checker** | RAG-based consistency verification | ChromaDB + Gemini |
 | **Research Agent** | Live fact-checking | Parallel API |
-| **Rights & Clearance** | Legal clearance analysis | Gemini (simulated watsonx) |
+| **Rights & Clearance** | Legal clearance analysis | Gemini |
 | **Visualizer** | Concept art / mood boards | Imagen 3 |
 | **Table Read** | Multi-speaker audio performance | Gemini TTS |
 
