@@ -23,7 +23,6 @@ A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a 
 | **Story Architect** | Generates beat sheets from pitches | Gemini + Framework templates |
 | **Dialogue Specialist** | Drafts full scenes with dialogue | Gemini + Character Bible |
 | **Continuity Checker** | RAG-based consistency verification | ClickHouse Cloud + ChromaDB |
-| **Research Agent** | Live fact-checking | Parallel API |
 | **Rights & Clearance** | Legal clearance analysis | Gemini |
 | **Visualizer** | Concept art / mood boards | Gemini 2.5 Flash Image |
 | **Table Read** | Multi-speaker audio performance | Gemini 3.1 Flash TTS |
@@ -43,9 +42,6 @@ Gemini 3.1 Flash TTS (`gemini-3.1-flash-tts-preview`) performs scenes aloud with
 ### 🎵 Cinematic Original Scores
 The Composer agent analyzes the emotional beat of a finalized scene and generates a production-ready cinematic soundtrack using the **Lyria 3** model.
 
-### 🌐 Live Fact-Checking
-The Research Agent uses the **Parallel API** (Hackathon Partner Integration) for real-time web research, letting writers verify historical and technical details without leaving the app.
-
 ### 🎨 Responsive UI/UX
 A completely redesigned, modular React/Next.js frontend featuring responsive flexbox layouts, a dynamic chat experience, and a dedicated Scene Experience modal for viewing scripts alongside their generated media.
 
@@ -54,7 +50,7 @@ A completely redesigned, modular React/Next.js frontend featuring responsive fle
 - **Backend**: Python, FastAPI, Google ADK (Agent Development Kit)
 - **Frontend**: Next.js 14, TypeScript, Vanilla CSS
 - **AI Models**: Gemini 2.5 Flash/Pro, Gemini 3.1 Flash TTS, Gemini 2.5 Flash Image, Lyria 3, text-embedding-004
-- **Partner Integrations**: ClickHouse Cloud (Vector DB), Parallel API (Search)
+- **Partner Integrations**: ClickHouse Cloud (Vector DB)
 - **State/Persistence**: SQLite (Persistent App State) + ClickHouse (Vector RAG)
 
 ## Quick Start
@@ -64,7 +60,6 @@ A completely redesigned, modular React/Next.js frontend featuring responsive fle
 - Python 3.10+
 - Node.js 18+
 - Google Cloud Project with Vertex AI enabled
-- Parallel API key (optional, for Research Agent)
 - ClickHouse Cloud instance (optional, falls back to local ChromaDB)
 
 ### 1. Backend Setup

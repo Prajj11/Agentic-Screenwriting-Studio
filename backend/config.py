@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     # ── API Keys & GCP Credentials ──────────────────────────────────────────────────────
     gcp_project_id: str = ""
     gcp_location: str = "us-central1"
-    parallel_api_key: str = ""
 
     # ── Grafana ───────────────────────────────────────────────────────
     grafana_api_key: str = ""

@@ -52,7 +52,6 @@ agents = """The system operates using a "Coordinator and Workers" pattern.
 - Story Architect: Generates structured beat sheets and story arcs from the user's raw pitch using established story frameworks.
 - Dialogue Specialist: Takes the beat sheet and the Character Bible and drafts full scenes with authentic character dialogue.
 - Continuity Checker: This agent uses ChromaDB to perform vector searches against all previously written scenes. It ensures that new scenes don't break established canon (e.g., a character can't hold a gun if they dropped it in the previous scene).
-- Research Agent: Uses a Parallel Search API to perform live fact-checking on the web, allowing writers to verify historical or technical details instantly.
 - Rights & Clearance: Analyzes the script to flag potential legal, copyright, or clearance risks.
 - Visualizer: Uses Imagen 3 to generate mood boards and concept art based on the script's locations and tone.
 - Table Read: Generates multi-speaker audio performances of the written scenes using Gemini TTS."""

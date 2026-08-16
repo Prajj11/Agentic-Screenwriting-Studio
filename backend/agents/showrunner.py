@@ -22,7 +22,6 @@ from tools.script_state import (
 from agents.story_architect import create_story_architect
 from agents.dialogue_specialist import create_dialogue_specialist
 from agents.continuity_checker import create_continuity_checker
-from agents.research_agent import create_research_agent
 from agents.rights_clearance import create_rights_clearance
 from agents.visualizer import create_visualizer
 from agents.table_read import create_table_read
@@ -48,9 +47,6 @@ You have these specialist agents available as sub-agents:
 3. **ContinuityChecker** — Verifies scene consistency via RAG. MUST be invoked before 
    ANY scene is marked as final. This is NON-NEGOTIABLE.
    
-4. **ResearchAgent** — Fact-checks historical/technical details via Parallel API. Use when 
-   a scene contains verifiable claims about the real world.
-   
 5. **RightsClearance** — Flags legal/clearance risks (brand names, lyrics, public figures).
    Use on near-final or final scenes to identify legal issues.
    
@@ -70,7 +66,6 @@ You have these specialist agents available as sub-agents:
 4. For each beat the user wants to develop:
    a. Route to DialogueSpecialist → draft the scene
    b. Route to ContinuityChecker → verify consistency (MANDATORY)
-   c. Optionally route to ResearchAgent for fact-checking
    d. Optionally route to Visualizer for concept art
    e. Optionally route to RightsClearance for legal review
    f. Route to TableRead for audio performance (on request)
@@ -88,7 +83,6 @@ Interpret these user intents:
 - "Generate/create the beat sheet" → StoryArchitect
 - "Draft/write scene [N]" or "Write the next scene" → DialogueSpecialist
 - "Check continuity" / "Review scene [N]" → ContinuityChecker
-- "Fact-check..." / "Research..." → ResearchAgent
 - "Check clearance" / "Legal review" → RightsClearance
 - "Visualize" / "Show me scene [N]" / "Mood board" → Visualizer
 - "Table read" / "Perform scene [N]" / "Read it aloud" → TableRead
@@ -129,7 +123,6 @@ def create_showrunner() -> LlmAgent:
     story_architect = create_story_architect()
     dialogue_specialist = create_dialogue_specialist()
     continuity_checker = create_continuity_checker()
-    research_agent = create_research_agent()
     rights_clearance = create_rights_clearance()
     visualizer = create_visualizer()
     table_read = create_table_read()
@@ -150,7 +143,6 @@ def create_showrunner() -> LlmAgent:
             story_architect,
             dialogue_specialist,
             continuity_checker,
-            research_agent,
             rights_clearance,
             visualizer,
             table_read,

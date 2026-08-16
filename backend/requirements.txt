@@ -21,9 +21,6 @@ mcp>=1.0.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
 
-# Parallel API
-parallel-web>=1.0.0
-
 # Utilities
 python-dotenv>=1.0.0
 python-multipart>=0.0.18
