@@ -1,18 +1,18 @@
 # 🎬 Agentic Screenwriting Studio
 
-A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a virtual writers' room for screenwriters. The system takes a writer from a one-line pitch to a continuity-checked, performable screenplay.
+A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a virtual writers' room for screenwriters. The system takes a writer from a one-line pitch to a continuity-checked, performable screenplay complete with cinematic concept art and original musical scores.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              🎬 Showrunner (Coordinator)             │
-│         Routes tasks, owns Script State             │
-├──────┬──────┬──────┬──────┬──────┬──────┬──────────┤
-│  📐  │  ✍️  │  🔍  │  🌐  │  ⚖️  │  🎨  │   🎙️    │
-│Story │Dial. │Cont. │Resrch│Rights│Visua │Table     │
-│Arch. │Spec. │Check │Agent │Clear │lizer │Read      │
-└──────┴──────┴──────┴──────┴──────┴──────┴──────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                  🎬 Showrunner (Coordinator)                 │
+│             Routes tasks, owns Script State                 │
+├──────┬──────┬──────┬──────┬──────┬──────┬──────────┬────────┤
+│  📐  │  ✍️  │  🔍  │  🌐  │  ⚖️  │  🎨  │   🎙️    │   🎵   │
+│Story │Dial. │Cont. │Resrch│Rights│Visua │Table     │Composer│
+│Arch. │Spec. │Check │Agent │Clear │lizer │Read      │        │
+└──────┴──────┴──────┴──────┴──────┴──────┴──────────┴────────┘
 ```
 
 ### Agents
@@ -22,11 +22,40 @@ A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a 
 | **Showrunner** | Coordinator — routes tasks, enforces quality gates | Google ADK |
 | **Story Architect** | Generates beat sheets from pitches | Gemini + Framework templates |
 | **Dialogue Specialist** | Drafts full scenes with dialogue | Gemini + Character Bible |
-| **Continuity Checker** | RAG-based consistency verification | ChromaDB + Gemini |
+| **Continuity Checker** | RAG-based consistency verification | ClickHouse Cloud + ChromaDB |
 | **Research Agent** | Live fact-checking | Parallel API |
-| **Rights & Clearance** | Legal clearance analysis | Gemini (simulated watsonx) |
-| **Visualizer** | Concept art / mood boards | Imagen 3 |
-| **Table Read** | Multi-speaker audio performance | Gemini TTS |
+| **Rights & Clearance** | Legal clearance analysis | Gemini |
+| **Visualizer** | Concept art / mood boards | Gemini 2.5 Flash Image |
+| **Table Read** | Multi-speaker audio performance | Gemini 3.1 Flash TTS |
+| **Composer** | Original cinematic soundtrack generation | Lyria 3 |
+
+## Key Features
+
+### 🛑 Forced Continuity Gate
+No scene can be marked as "final" until the Continuity Checker has verified it against all established canon. This is enforced programmatically — not optional.
+
+### 🧠 RAG-Based Continuity
+The backend utilizes a **Dual-Write Vector Store** (ClickHouse Cloud primary, ChromaDB local fallback). Every scene and continuity fact is indexed as it's added. The Continuity Checker performs vector search using Gemini `text-embedding-004` to find potential conflicts.
+
+### 🎭 Multi-Speaker Table Reads
+Gemini 3.1 Flash TTS (`gemini-3.1-flash-tts-preview`) performs scenes aloud with distinct character voices and embedded emotional tags. Handles the 2-speaker API limit by intelligently batching dialogue chunks.
+
+### 🎵 Cinematic Original Scores
+The Composer agent analyzes the emotional beat of a finalized scene and generates a production-ready cinematic soundtrack using the **Lyria 3** model.
+
+### 🌐 Live Fact-Checking
+The Research Agent uses the **Parallel API** (Hackathon Partner Integration) for real-time web research, letting writers verify historical and technical details without leaving the app.
+
+### 🎨 Responsive UI/UX
+A completely redesigned, modular React/Next.js frontend featuring responsive flexbox layouts, a dynamic chat experience, and a dedicated Scene Experience modal for viewing scripts alongside their generated media.
+
+## Tech Stack
+
+- **Backend**: Python, FastAPI, Google ADK (Agent Development Kit)
+- **Frontend**: Next.js 14, TypeScript, Vanilla CSS
+- **AI Models**: Gemini 2.5 Flash/Pro, Gemini 3.1 Flash TTS, Gemini 2.5 Flash Image, Lyria 3, text-embedding-004
+- **Partner Integrations**: ClickHouse Cloud (Vector DB), Parallel API (Search)
+- **State/Persistence**: SQLite (Persistent App State) + ClickHouse (Vector RAG)
 
 ## Quick Start
 
@@ -34,8 +63,9 @@ A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a 
 
 - Python 3.10+
 - Node.js 18+
-- Gemini API key ([Get one here](https://aistudio.google.com/))
+- Google Cloud Project with Vertex AI enabled
 - Parallel API key (optional, for Research Agent)
+- ClickHouse Cloud instance (optional, falls back to local ChromaDB)
 
 ### 1. Backend Setup
 
@@ -52,7 +82,8 @@ pip install -r requirements.txt
 
 # Configure environment
 copy .env.example .env
-# Edit .env and add your GEMINI_API_KEY
+# Edit .env and authenticate your Google Cloud CLI
+gcloud auth application-default login
 
 # Run the backend
 python main.py
@@ -80,44 +111,23 @@ The frontend starts at `http://localhost:3000`.
 2. Enter a pitch in the Writers' Room panel (e.g., "A burned-out detective in 1920s Chicago discovers their partner is working for the mob")
 3. Click "📐 Beat Sheet" to generate the story structure
 4. Click "✍️ Draft Scene" to write scenes
-5. Use the other agents as needed
-
-## Key Features
-
-### Forced Continuity Gate
-No scene can be marked as "final" until the Continuity Checker has verified it against all established canon. This is enforced programmatically — not optional.
-
-### RAG-Based Continuity
-ChromaDB indexes every scene and continuity fact as it's added. The Continuity Checker performs vector search to find potential conflicts.
-
-### Multi-Speaker Table Reads
-Gemini TTS performs scenes aloud with distinct character voices. Handles the 2-speaker API limit by intelligently batching dialogue.
-
-### Live Fact-Checking
-The Research Agent uses the Parallel API for real-time web research, letting writers verify historical and technical details without leaving the app.
-
-## Tech Stack
-
-- **Backend**: Python, FastAPI, Google ADK, SQLite, ChromaDB
-- **Frontend**: Next.js 14, TypeScript, Vanilla CSS
-- **AI**: Gemini 2.5 Flash/Pro, Imagen 3, Gemini TTS
-- **Research**: Parallel API
-- **State**: SQLite (persistent) + ChromaDB (vector search)
+5. Once a scene is finalized, use the **Visualizer**, **Table Read**, and **Composer** to bring it to life!
 
 ## Project Structure
 
 ```
 ├── backend/
-│   ├── agents/          # 8 ADK agent definitions
+│   ├── agents/          # 9 ADK agent definitions (Showrunner + 8 Specialists)
 │   ├── tools/           # Tool functions for agents
 │   ├── models/          # Pydantic data models
-│   ├── db/              # SQLite + ChromaDB stores
+│   ├── db/              # ClickHouse + ChromaDB stores & SQLite session state
 │   ├── data/frameworks/ # Story structure templates
 │   ├── main.py          # FastAPI entry point
-│   └── config.py        # Settings
+│   └── config.py        # Settings loader
 ├── frontend/
 │   └── src/
 │       ├── app/         # Next.js pages + CSS
+│       ├── components/  # React components
 │       ├── lib/         # API client
 │       └── hooks/       # WebSocket hook
 └── README.md
@@ -125,4 +135,4 @@ The Research Agent uses the Parallel API for real-time web research, letting wri
 
 ## License
 
-Built for the Google Cloud Hackathon 2026.
+Built for the **Google Cloud Agentic Cinema Hackathon**.

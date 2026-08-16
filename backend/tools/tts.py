@@ -18,27 +18,42 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Available voices for character assignment
-# These are the Gemini TTS voice options
+# These are the valid Gemini TTS voice options
 AVAILABLE_VOICES = [
-    "Zephyr", "Puck", "Charon", "Kore", "Fenrir",
-    "Aoede", "Leda", "Orus", "Vale",
+    "Aoede", "Charon", "Fenrir", "Kore", "Puck",
 ]
 
 # Track voice assignments per project to keep consistent
 _voice_assignments: dict[str, dict[str, str]] = {}  # project_id → {character → voice}
 
 
-def _assign_voice(project_id: str, character_name: str) -> str:
-    """Assign a consistent voice to a character."""
+async def _assign_voice(project_id: str, character_name: str) -> str:
+    """Assign a consistent voice to a character, prioritizing their Character Bible voice_notes."""
     if project_id not in _voice_assignments:
         _voice_assignments[project_id] = {}
 
     assignments = _voice_assignments[project_id]
     if character_name not in assignments:
-        used_voices = set(assignments.values())
-        available = [v for v in AVAILABLE_VOICES if v not in used_voices]
-        voice = available[0] if available else AVAILABLE_VOICES[len(assignments) % len(AVAILABLE_VOICES)]
-        assignments[character_name] = voice
+        # First, try to get the voice from the character bible
+        from tools.script_state import _get_state
+        state = await _get_state(project_id)
+        char = state.characters.get(character_name)
+        
+        chosen_voice = None
+        if char and char.voice_notes:
+            notes = char.voice_notes.lower()
+            for v in AVAILABLE_VOICES:
+                if v.lower() in notes:
+                    chosen_voice = v
+                    break
+
+        # Fallback to a random unassigned voice
+        if not chosen_voice:
+            used_voices = set(assignments.values())
+            available = [v for v in AVAILABLE_VOICES if v not in used_voices]
+            chosen_voice = available[0] if available else AVAILABLE_VOICES[len(assignments) % len(AVAILABLE_VOICES)]
+            
+        assignments[character_name] = chosen_voice
 
     return assignments[character_name]
 
@@ -82,10 +97,10 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
         characters = list(set(dl.get("character", "") for dl in dialogue))
         voice_map = {}
         for char in characters:
-            voice_map[char] = _assign_voice(project_id, char)
+            voice_map[char] = await _assign_voice(project_id, char)
 
-        # Build the dialogue text with speaker labels
-        dialogue_text = ""
+        # Build the dialogue text with speaker labels and strong acting instructions
+        dialogue_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
         for dl in dialogue:
             char = dl.get("character", "UNKNOWN")
             line = dl.get("line", "")
@@ -108,7 +123,7 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                         speaker=char,
                         voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=voice_map[char]
+                                voice_name=voice_map[char],
                             )
                         ),
                     )
@@ -146,16 +161,20 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                         speaker=char,
                         voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=voice_map.get(char, AVAILABLE_VOICES[0])
+                                voice_name=voice_map.get(char, AVAILABLE_VOICES[0]),
                             )
                         ),
                     )
                     for char in seg_chars[:2]
                 ]
 
-                seg_text = ""
+                seg_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
                 for dl in segment["lines"]:
-                    seg_text += f"{dl['character']}: {dl['line']}\n"
+                    parenthetical = dl.get("parenthetical", "")
+                    if parenthetical:
+                        seg_text += f"{dl['character']} {parenthetical}: {dl['line']}\n"
+                    else:
+                        seg_text += f"{dl['character']}: {dl['line']}\n"
 
                 speech_config = types.SpeechConfig(
                     multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(

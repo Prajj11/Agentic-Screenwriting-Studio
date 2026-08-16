@@ -1,5 +1,5 @@
 """
-Rights & Clearance Agent — simulated IBM watsonx integration.
+Rights & Clearance Agent.
 
 Flags real brand names, song lyrics, public figure references, and
 other clearance risks, with suggested safe rewrites.
@@ -77,8 +77,7 @@ def create_rights_clearance() -> LlmAgent:
         description=(
             "Studio legal clearance analyst. Reviews scenes for real brand names, "
             "song lyrics, public figure references, trademarked phrases, and other "
-            "legal/clearance risks. Provides severity ratings and safe rewrite suggestions. "
-            "Simulates IBM watsonx legal clearance capabilities."
+            "legal/clearance risks. Provides severity ratings and safe rewrite suggestions."
         ),
         instruction=RIGHTS_CLEARANCE_INSTRUCTION,
         tools=[check_clearance, get_scene, get_all_scenes_summary],

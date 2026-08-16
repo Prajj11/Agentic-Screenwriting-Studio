@@ -1,5 +1,5 @@
 """
-Rights & Clearance tool — simulated watsonx integration.
+Rights & Clearance tool.
 
 Uses Gemini with a specialized legal-analysis prompt to flag:
 - Real brand names
@@ -7,8 +7,7 @@ Uses Gemini with a specialized legal-analysis prompt to flag:
 - References to real public figures
 - Potential trademark issues
 
-Designed as a swappable interface: replace the _analyze_with_gemini() call
-with a watsonx API call when the API key becomes available.
+Designed as a swappable interface.
 """
 
 from __future__ import annotations
@@ -61,8 +60,7 @@ async def check_clearance(scene_text: str) -> str:
     """
     Analyze a scene for rights/clearance issues.
     
-    This simulates what IBM watsonx would do for studio legal clearance.
-    It uses Gemini with a specialized prompt to identify:
+    This uses Gemini with a specialized prompt to identify:
     - Real brand names
     - Song lyrics
     - Public figures
@@ -126,8 +124,7 @@ async def check_clearance(scene_text: str) -> str:
             "total_issues": len(flags),
             "has_critical": any(f.get("severity") == "critical" for f in flags),
             "has_high": any(f.get("severity") == "high" for f in flags),
-            "integration": "gemini_simulated_watsonx",
-            "note": "This analysis simulates IBM watsonx legal clearance. Replace with watsonx API for production use.",
+            "integration": "gemini",
         }, indent=2)
 
     except ImportError:
