@@ -112,76 +112,41 @@ async def _generate_image_with_gemini(prompt: str, prefix: str, settings) -> str
             location=settings.gcp_location,
         )
 
-        # Use Gemini generate_content with IMAGE response modality
-        # As per the Google Cloud notebook pattern
         response = client.models.generate_content(
-            model=settings.gemini_image_gen_model,
+            model=settings.gemini_image_model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
-            ),
+            )
         )
 
-        # Extract the image from response parts
-        if (
-            response.candidates
-            and response.candidates[0].content
-            and response.candidates[0].content.parts
-        ):
-            for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.data:
-                    # Determine file extension from mime type
-                    mime_type = part.inline_data.mime_type or "image/png"
-                    ext = "png" if "png" in mime_type else "jpg"
+        if response.candidates and response.candidates[0].content.parts:
+            # The API returns inline_data for IMAGE modality
+            img_data = response.candidates[0].content.parts[0].inline_data.data
+            ext = "jpg"
+            output_dir = Path(settings.output_images_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{prefix}_{uuid.uuid4().hex[:8]}.{ext}"
+            filepath = output_dir / filename
 
-                    # Save the image
-                    output_dir = Path(settings.output_images_dir)
-                    output_dir.mkdir(parents=True, exist_ok=True)
+            with open(filepath, "wb") as f:
+                f.write(img_data)
 
-                    filename = f"{prefix}_{uuid.uuid4().hex[:8]}.{ext}"
-                    filepath = output_dir / filename
-
-                    # The inline_data.data is already bytes
-                    image_bytes = part.inline_data.data
-                    if isinstance(image_bytes, str):
-                        # If it comes as base64 string, decode it
-                        image_bytes = base64.b64decode(image_bytes)
-
-                    with open(filepath, "wb") as f:
-                        f.write(image_bytes)
-
-                    logger.info(f"Generated {prefix} image: {filepath}")
-                    return json.dumps({
-                        "success": True,
-                        "image_path": str(filepath),
-                        "filename": filename,
-                        "url": f"/api/media/images/{filename}",
-                        "prompt_used": prompt[:200],
-                        "model": settings.gemini_image_gen_model,
-                    })
-
-            # No image part found in the response
-            # Check if there's text (model might have returned text instead)
-            text_parts = [
-                p.text for p in response.candidates[0].content.parts
-                if hasattr(p, "text") and p.text
-            ]
+            logger.info(f"Generated {prefix} image: {filepath}")
             return json.dumps({
-                "success": False,
-                "error": "No image was generated. The model returned text instead.",
-                "model_response": " ".join(text_parts)[:500] if text_parts else "Empty response",
+                "success": True,
+                "image_path": str(filepath),
+                "filename": filename,
+                "url": f"/api/media/images/{filename}",
+                "prompt_used": prompt[:200],
+                "model": settings.gemini_image_model,
             })
         else:
             return json.dumps({
                 "success": False,
-                "error": "No image was generated. The prompt may have been filtered or the model returned an empty response.",
+                "error": "No image was generated. The prompt may have been filtered.",
             })
 
-    except ImportError:
-        return json.dumps({
-            "success": False,
-            "error": "google-genai SDK not installed. Run: pip install google-genai",
-        })
     except Exception as e:
         logger.error(f"Image generation error: {e}")
         
@@ -199,7 +164,7 @@ async def _generate_image_with_gemini(prompt: str, prefix: str, settings) -> str
                 "filename": "placeholder.jpg",
                 "url": "/api/media/images/placeholder.jpg",
                 "prompt_used": prompt[:200] + " (FALLBACK APPLIED DUE TO API ERROR)",
-                "model": settings.gemini_image_gen_model,
+                "model": settings.gemini_image_model,
                 "warning": "The Google Cloud project did not have access to the image model. A placeholder was used."
             })
             

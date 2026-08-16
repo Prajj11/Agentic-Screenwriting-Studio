@@ -179,6 +179,7 @@ _agent_statuses: dict[str, dict] = {
     "RightsClearance": {"status": "idle", "display_name": "⚖️ Rights & Clearance", "icon": "⚖️", "last_active": None},
     "Visualizer": {"status": "idle", "display_name": "🎨 Visualizer", "icon": "🎨", "last_active": None},
     "TableRead": {"status": "idle", "display_name": "🎙️ Table Read", "icon": "🎙️", "last_active": None},
+    "Composer": {"status": "idle", "display_name": "🎵 Composer", "icon": "🎵", "last_active": None},
 }
 
 # ── ADK Runner ────────────────────────────────────────────────────────
@@ -436,7 +437,7 @@ async def get_chat_history(project_id: str):
                 parts = [p.text for p in event.content.parts if hasattr(p, 'text') and p.text]
                 txt = "\n".join(parts)
                 
-            if txt and not (role == "agent" and author != "Showrunner"):
+            if txt:
                 messages.append({
                     "id": getattr(event, 'id', str(uuid.uuid4())),
                     "role": role,
@@ -641,6 +642,7 @@ async def get_agent_statuses():
         "RightsClearance": "Flags legal/clearance risks",
         "Visualizer": "Generates concept art mood boards",
         "TableRead": "Performs TTS audio of dialogue",
+        "Composer": "Generates cinematic soundtracks using Lyria 3",
     }
     for name, info in _agent_statuses.items():
         agents.append(AgentStatus(

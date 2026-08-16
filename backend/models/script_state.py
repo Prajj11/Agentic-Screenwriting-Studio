@@ -200,6 +200,7 @@ class Scene(BaseModel):
     mood_description: str = ""             # For Visualizer
     mood_board_image: Optional[str] = None # Path to generated image
     table_read_audio: Optional[str] = None # Path to generated audio
+    soundtrack_audio: Optional[str] = None # Path to generated Lyria 3 score
     raw_text: str = ""                     # The full formatted screenplay text
 
     def to_screenplay_text(self) -> str:

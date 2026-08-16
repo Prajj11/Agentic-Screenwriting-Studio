@@ -99,8 +99,8 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
         for char in characters:
             voice_map[char] = await _assign_voice(project_id, char)
 
-        # Build the dialogue text with speaker labels
-        dialogue_text = ""
+        # Build the dialogue text with speaker labels and strong acting instructions
+        dialogue_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
         for dl in dialogue:
             char = dl.get("character", "UNKNOWN")
             line = dl.get("line", "")
@@ -168,9 +168,13 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                     for char in seg_chars[:2]
                 ]
 
-                seg_text = ""
+                seg_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
                 for dl in segment["lines"]:
-                    seg_text += f"{dl['character']}: {dl['line']}\n"
+                    parenthetical = dl.get("parenthetical", "")
+                    if parenthetical:
+                        seg_text += f"{dl['character']} {parenthetical}: {dl['line']}\n"
+                    else:
+                        seg_text += f"{dl['character']}: {dl['line']}\n"
 
                 speech_config = types.SpeechConfig(
                     multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(

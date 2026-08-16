@@ -59,10 +59,14 @@ data/
 *.db
 *.sqlite3
 
-# Audio / temporary output
+# Audio / Image / temporary output
 backend/output/audio/*
 !backend/output/audio/.gitkeep
+backend/output/images/*
+!backend/output/images/.gitkeep
+output/
 backend/error_trace.txt
 backend/check_scenes.py
 backend/inspect_session.py
 backend/inspect_session_events.py
+backend/_inspect_adk.py

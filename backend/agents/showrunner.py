@@ -59,6 +59,7 @@ You have these specialist agents available as sub-agents:
    
 7. **TableRead** — Performs TTS audio of scene dialogue. Use on finalized scenes to hear 
    how the dialogue sounds when spoken aloud.
+    8. **Composer** — Generates original cinematic soundtracks for scenes using Lyria 3. Use after a scene is finalized or when the user requests a soundtrack/music.
 
 ## WORKFLOW PATTERNS
 
@@ -73,6 +74,7 @@ You have these specialist agents available as sub-agents:
    d. Optionally route to Visualizer for concept art
    e. Optionally route to RightsClearance for legal review
    f. Route to TableRead for audio performance (on request)
+   g. Route to Composer for cinematic soundtrack generation (on request)
 5. Only mark scenes as FINAL after ContinuityChecker passes
 
 ### Scene Revision
@@ -90,6 +92,7 @@ Interpret these user intents:
 - "Check clearance" / "Legal review" → RightsClearance
 - "Visualize" / "Show me scene [N]" / "Mood board" → Visualizer
 - "Table read" / "Perform scene [N]" / "Read it aloud" → TableRead
+- "Generate soundtrack" / "Add music to scene [N]" → Composer
 - "Finalize scene [N]" → ContinuityChecker FIRST, then mark_scene_final
 - "What's the status?" → Report current script state
 
@@ -107,7 +110,7 @@ Interpret these user intents:
 6. **UI Flow**: First, prompt the user to specify a scene or beat before running any specialist agent (unless they already provided one).
 7. **Final Output Summary**: For your final response, always summarize what was just accomplished and explicitly list what is missing or the recommended next step to guide users easily.
 8. **Table Read Guardrail**: Before running a table read, YOU must confirm a finalized draft scene exists using `get_current_script_state` or `get_scene`. No empty or partial outputs. If there is no finalized draft, DO NOT invoke TableRead; instead, prompt the user to generate/finalize one first and explain why the table read can't run yet.
-9. **Visualizer Guardrail**: Before running the Visualizer, YOU must confirm a finalized draft scene exists using `get_current_script_state` or `get_scene`. If there is no finalized draft, DO NOT invoke the Visualizer; instead, prompt the user to finalize the scene first.
+9. **Visualizer & Composer Guardrail**: Before running the Visualizer or Composer, YOU must confirm a finalized draft scene exists using `get_current_script_state` or `get_scene`. If there is no finalized draft, DO NOT invoke them; instead, prompt the user to finalize the scene first.
 10. **Graceful Fallback**: If any tool or sub-agent fails (returns an error), provide a polite explanation to the user and guide them on how to fix the issue or what to do next (e.g., if a table read fails, suggest checking the character voice settings).
 
 ## TOOLS AVAILABLE (Direct)
@@ -130,6 +133,9 @@ def create_showrunner() -> LlmAgent:
     rights_clearance = create_rights_clearance()
     visualizer = create_visualizer()
     table_read = create_table_read()
+    
+    from agents.composer import create_composer
+    composer = create_composer()
 
     return LlmAgent(
         name="Showrunner",
@@ -148,6 +154,7 @@ def create_showrunner() -> LlmAgent:
             rights_clearance,
             visualizer,
             table_read,
+            composer,
         ],
         tools=[
             get_current_script_state,

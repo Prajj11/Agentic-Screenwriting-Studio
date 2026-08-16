@@ -42,14 +42,14 @@ class Settings(BaseSettings):
         )
 
     # ── Model Names ───────────────────────────────────────────────────
-    gemini_main_model: str = "gemini-2.5-flash"
-    gemini_pro_model: str = "gemini-2.5-pro"
-    gemini_tts_model: str = "gemini-2.5-flash-tts"
-    gemini_image_model: str = "imagen-3.0-generate-002"
-    gemini_image_gen_model: str = "gemini-2.0-flash-exp"
-    gemini_embedding_model: str = "text-embedding-004"
-    lyria_music_model: str = "lyria-3-pro-preview"
-    lyria_music_clip_model: str = "lyria-3-clip-preview"
+    gemini_main_model: str = os.getenv("GEMINI_MAIN_MODEL", "gemini-2.5-flash")
+    gemini_pro_model: str = os.getenv("GEMINI_PRO_MODEL", "gemini-2.5-pro")
+    gemini_tts_model: str = os.getenv("GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview")
+    gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+    gemini_image_gen_model: str = os.getenv("GEMINI_IMAGE_GEN_MODEL", "gemini-2.5-flash-image")
+    gemini_embedding_model: str = os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004")
+    lyria_music_model: str = os.getenv("LYRIA_MUSIC_MODEL", "lyria-3-pro-preview")
+    lyria_music_clip_model: str = os.getenv("LYRIA_MUSIC_CLIP_MODEL", "lyria-3-clip-preview")
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"

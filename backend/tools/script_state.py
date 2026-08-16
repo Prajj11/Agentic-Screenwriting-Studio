@@ -340,7 +340,7 @@ async def mark_scene_reviewed(project_id: str, scene_number: int, issues_json: s
 async def attach_media_to_scene(project_id: str, scene_number: int, media_type: str, url: str) -> str:
     """
     Attach a generated media URL to a scene in the Script State.
-    media_type should be either 'mood_board_image' or 'table_read_audio'.
+    media_type should be one of 'mood_board_image', 'table_read_audio', or 'soundtrack_audio'.
     """
     state = await _get_state(project_id)
     scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
@@ -351,6 +351,8 @@ async def attach_media_to_scene(project_id: str, scene_number: int, media_type: 
         scene.mood_board_image = url
     elif media_type == "table_read_audio":
         scene.table_read_audio = url
+    elif media_type == "soundtrack_audio":
+        scene.soundtrack_audio = url
     else:
         return json.dumps({"success": False, "error": "Invalid media_type."})
 
