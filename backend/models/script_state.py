@@ -137,6 +137,23 @@ class Character(BaseModel):
     established_facts: dict[str, str] = Field(default_factory=dict)  # fact_key → fact_value
     first_appearance_scene: Optional[int] = None
 
+    # ── Visual Consistency Fields ─────────────────────────────────────
+    # These fields lock down a character's canonical physical appearance so
+    # that every AI-generated image depicts them identically across scenes.
+    visual_description: str = ""           # Locked-down physical appearance spec:
+                                           #   age, gender, ethnicity/skin tone, face shape,
+                                           #   hair color/style/length, eye color, build/height,
+                                           #   distinguishing features (scars, tattoos, glasses),
+                                           #   signature wardrobe/color palette.
+                                           # Example: "Mid-30s East Asian woman. Oval face, sharp
+                                           #   cheekbones. Jet-black straight hair, shoulder length,
+                                           #   often tucked behind left ear. Dark brown almond eyes.
+                                           #   Slim athletic build, 5'6. Small scar above right
+                                           #   eyebrow. Typically wears dark tailored blazers over
+                                           #   muted earth-tone tops."
+    reference_portrait: Optional[str] = None  # Path/URL to a canonical reference portrait image
+                                              # generated once and reused for visual consistency
+
 
 class Beat(BaseModel):
     """A single beat in the story's structural outline."""

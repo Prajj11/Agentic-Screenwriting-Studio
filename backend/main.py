@@ -643,6 +643,41 @@ async def get_characters(project_id: str):
     return {name: json.loads(c.model_dump_json()) for name, c in state.characters.items()}
 
 
+@app.get("/api/script/{project_id}/characters/visuals")
+async def get_character_visuals(project_id: str):
+    """Get visual appearance data and reference portraits for all characters."""
+    state = get_active_state_sync(project_id)
+    if not state:
+        store = await get_sqlite_store()
+        state = await store.load_script_state(project_id)
+    if not state:
+        raise HTTPException(404, f"Project {project_id} not found")
+
+    visuals = {}
+    for name, char in state.characters.items():
+        visuals[name] = {
+            "name": name,
+            "visual_description": char.visual_description or "",
+            "reference_portrait": char.reference_portrait or None,
+            "has_visual_description": bool(char.visual_description),
+            "has_reference_portrait": bool(char.reference_portrait),
+        }
+
+    total = len(visuals)
+    with_visuals = sum(1 for v in visuals.values() if v["has_visual_description"])
+    with_portraits = sum(1 for v in visuals.values() if v["has_reference_portrait"])
+
+    return {
+        "characters": visuals,
+        "summary": {
+            "total_characters": total,
+            "with_visual_descriptions": with_visuals,
+            "with_reference_portraits": with_portraits,
+            "consistency_score": f"{(with_visuals / total * 100) if total else 0:.0f}%",
+        },
+    }
+
+
 # ── Session Management ────────────────────────────────────────────────
 
 @app.get("/api/sessions/{project_id}")

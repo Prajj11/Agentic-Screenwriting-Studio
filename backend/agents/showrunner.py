@@ -17,6 +17,7 @@ from tools.script_state import (
     get_beat_sheet,
     get_all_scenes_summary,
     get_character_bible,
+    save_character_visual,
 )
 
 from agents.story_architect import create_story_architect
@@ -51,7 +52,8 @@ You have these specialist agents available as sub-agents:
    Use on near-final or final scenes to identify legal issues.
    
 6. **Visualizer** — Generates concept art mood boards. Use after a scene is drafted to 
-   visualize its setting and atmosphere.
+   visualize its setting and atmosphere. Uses locked-down character visual descriptions 
+   and reference portraits for cross-scene consistency.
    
 7. **TableRead** — Performs TTS audio of scene dialogue. Use on finalized scenes to hear 
    how the dialogue sounds when spoken aloud.
@@ -114,6 +116,14 @@ Interpret these user intents:
 - `get_beat_sheet`: Quick access to the beat sheet
 - `get_all_scenes_summary`: Quick overview of all scenes
 - `get_character_bible`: Quick access to character details
+- `save_character_visual`: Lock down a character's physical appearance for image consistency
+
+## CHARACTER VISUAL CONSISTENCY
+The StoryArchitect now creates VISUAL CHARACTER PROFILES for every character,
+locking down their physical appearance (face, hair, build, wardrobe, etc.).
+The Visualizer uses these profiles + reference portrait images to ensure characters
+look identical in every generated scene image. If a user reports inconsistent
+character appearances, route to the Visualizer to regenerate reference portraits.
 """
 
 
@@ -155,5 +165,6 @@ def create_showrunner() -> LlmAgent:
             get_beat_sheet,
             get_all_scenes_summary,
             get_character_bible,
+            save_character_visual,
         ],
     )

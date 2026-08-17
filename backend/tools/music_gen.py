@@ -103,25 +103,75 @@ async def generate_scene_soundtrack(
             "error": "google-genai SDK not installed.",
         })
     except Exception as e:
-        logger.error(f"Lyria generation error: {e}")
-        
-        # GRACEFUL FALLBACK (For hackathon project with 404 NOT_FOUND errors)
-        # We'll use a placeholder audio file if one exists, or fail gracefully
-        output_dir = Path(settings.output_audio_dir)
-        placeholder_path = output_dir / "placeholder_score.wav"
-        
-        if placeholder_path.exists():
-            logger.info("Using placeholder soundtrack fallback due to API error.")
-            return json.dumps({
-                "success": True,
-                "audio_path": str(placeholder_path),
-                "filename": "placeholder_score.wav",
-                "url": "/api/media/audio/placeholder_score.wav",
-                "prompt_used": prompt[:100] + " (FALLBACK APPLIED)",
-                "warning": "The Google Cloud project did not have access to the Lyria model. A placeholder was used."
-            })
-            
+        logger.warning(f"Lyria generation failed ({e}). Falling back to Gemini audio generation...")
+
+        # ── Fallback: use Gemini Flash for audio generation ──────────
+        # Lyria 3 may not be available in this GCP project.
+        # Fall back to gemini-2.5-flash with AUDIO modality which can
+        # generate short musical sequences.
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(
+                vertexai=True,
+                project=settings.gcp_project_id,
+                location=settings.gcp_location,
+            )
+
+            fallback_prompt = (
+                f"Generate a short cinematic musical score (instrumental only, no vocals, no speech).\n"
+                f"Genre: {genre}\n"
+                f"Mood: {mood}\n"
+                f"Scene: {scene_description[:300]}\n"
+                f"Musical direction: {music_prompt[:300]}\n"
+                f"Output: a 15-30 second instrumental soundtrack piece."
+            )
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=fallback_prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                ),
+            )
+
+            audio_data = None
+            if response.candidates and response.candidates[0].content:
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data and part.inline_data.data:
+                        audio_data = part.inline_data.data
+                        break
+
+            if audio_data:
+                output_dir = Path(settings.output_audio_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                filename = f"score_{uuid.uuid4().hex[:8]}.wav"
+                filepath = output_dir / filename
+
+                if isinstance(audio_data, str):
+                    import base64
+                    audio_bytes = base64.b64decode(audio_data)
+                else:
+                    audio_bytes = audio_data
+
+                with open(filepath, "wb") as f:
+                    f.write(audio_bytes)
+
+                logger.info(f"Generated soundtrack via Gemini fallback: {filepath}")
+                return json.dumps({
+                    "success": True,
+                    "audio_path": str(filepath),
+                    "filename": filename,
+                    "url": f"/api/media/audio/{filename}",
+                    "prompt_used": fallback_prompt[:200],
+                    "note": "Generated successfully using the backup audio pipeline.",
+                })
+
+        except Exception as fallback_e:
+            logger.error(f"Fallback music generation also failed: {fallback_e}")
+
         return json.dumps({
             "success": False,
-            "error": str(e),
+            "error": f"Music generation failed: {e}",
         })

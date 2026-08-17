@@ -108,6 +108,17 @@ The frontend starts at `http://localhost:3000`.
 4. Click "✍️ Draft Scene" to write scenes
 5. Once a scene is finalized, use the **Visualizer**, **Table Read**, and **Composer** to bring it to life!
 
+## Remote Setup (Running on Another Machine)
+
+If a team member needs to run the Agentic Screenwriting Studio on their own computer, follow these steps:
+
+1. **Share the Code**: Push this folder to a GitHub repository and have them clone it (or zip the folder and send it to them).
+2. **Google Cloud Access**: Because the app connects directly to Google Cloud Vertex AI using your local account credentials, they will need access to your GCP project:
+   - They need to install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) on their computer.
+   - Open a terminal and run `gcloud auth application-default login`.
+   - They must log in with a Google account that has permission to access your Google Cloud Project (`gen-lang-client-0423661956`).
+3. **Run It**: Once they are authenticated, they just double-click `run.bat` on their computer exactly like you do to start both servers.
+
 ## Project Structure
 
 ```

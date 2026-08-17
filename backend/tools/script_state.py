@@ -337,6 +337,110 @@ async def mark_scene_reviewed(project_id: str, scene_number: int, issues_json: s
     })
 
 
+async def save_character_visual(
+    project_id: str,
+    character_name: str,
+    visual_description: str,
+    reference_portrait: str = "",
+) -> str:
+    """
+    Lock down a character's canonical physical appearance for visual consistency.
+
+    This MUST be called by the StoryArchitect (or Visualizer) once per character
+    before any scene images are generated.  Every subsequent image-generation
+    call will inject this `visual_description` verbatim into the prompt so the
+    AI depicts the character identically across scenes.
+
+    Args:
+        project_id: The project identifier.
+        character_name: Exact name of the character (must already exist in the bible).
+        visual_description: A detailed, structured physical appearance specification.
+            MUST include: approximate age, gender, ethnicity/skin tone, face shape,
+            hair color + style + length, eye color, build/height, and any
+            distinguishing features (scars, tattoos, glasses, etc.).
+            SHOULD include: signature wardrobe and color palette.
+            Example: "Mid-30s East Asian woman. Oval face, sharp cheekbones.
+            Jet-black straight hair, shoulder length, often tucked behind left ear.
+            Dark brown almond eyes. Slim athletic build, 5'6. Small scar above
+            right eyebrow. Typically wears dark tailored blazers over muted
+            earth-tone tops."
+        reference_portrait: Optional URL/path to a generated canonical portrait image.
+    """
+    state = await _get_state(project_id)
+    char = state.characters.get(character_name)
+    if not char:
+        return json.dumps({
+            "success": False,
+            "error": f"Character '{character_name}' not found in the bible. Save the character first.",
+        })
+
+    char.visual_description = visual_description
+    if reference_portrait:
+        char.reference_portrait = reference_portrait
+    await _save_state(project_id)
+
+    logger.info(f"Locked visual description for '{character_name}' in project '{project_id}'")
+    return json.dumps({
+        "success": True,
+        "character": character_name,
+        "visual_description": visual_description[:200] + ("..." if len(visual_description) > 200 else ""),
+        "has_reference_portrait": bool(reference_portrait),
+        "message": (
+            f"Visual appearance for '{character_name}' has been locked. "
+            "All future image generations will use this description for consistency."
+        ),
+    })
+
+
+async def get_character_visuals_for_scene(project_id: str, scene_number: int = 0) -> str:
+    """
+    Get a compact visual-only summary of characters for image generation.
+
+    If scene_number is provided, returns visuals only for characters in that scene.
+    If scene_number is 0, returns visuals for ALL characters.
+
+    The output is formatted specifically for injection into image-generation prompts,
+    containing only the visual_description (not backstory or personality traits).
+    """
+    state = await _get_state(project_id)
+
+    # Determine which characters to include
+    if scene_number > 0:
+        scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+        if not scene:
+            return json.dumps({"error": f"Scene {scene_number} not found."})
+        char_names = scene.characters
+    else:
+        char_names = list(state.characters.keys())
+
+    visuals = {}
+    missing_visuals = []
+    for name in char_names:
+        char = state.characters.get(name)
+        if char:
+            if char.visual_description:
+                visuals[name] = {
+                    "visual_description": char.visual_description,
+                    "reference_portrait": char.reference_portrait,
+                }
+            else:
+                missing_visuals.append(name)
+                # Fallback: use general description if no visual_description is set
+                visuals[name] = {
+                    "visual_description": char.description or f"[No visual description set for {name}]",
+                    "reference_portrait": None,
+                    "warning": "No locked visual_description — using general description as fallback.",
+                }
+
+    result = {"characters": visuals}
+    if missing_visuals:
+        result["warning"] = (
+            f"Characters without locked visual descriptions: {', '.join(missing_visuals)}. "
+            "Run save_character_visual for each to ensure consistent depiction across scenes."
+        )
+    return json.dumps(result, indent=2)
+
+
 async def attach_media_to_scene(project_id: str, scene_number: int, media_type: str, url: str) -> str:
     """
     Attach a generated media URL to a scene in the Script State.

@@ -17,6 +17,7 @@ from tools.script_state import (
     get_current_script_state,
     get_scene,
     attach_media_to_scene,
+    get_character_visuals_for_scene,
 )
 from tools.image_gen import generate_scene_image
 
@@ -72,7 +73,11 @@ Include these as continuity_facts in the scene data.
 ## OPTIONAL: SCENE ILLUSTRATION
 After drafting a scene, you may generate a visual illustration of a key dramatic
 moment using `generate_scene_image`. This helps the team SEE the scene, not just
-read it. If you generate an image, attach it to the scene using `attach_media_to_scene`.
+read it. If you generate an image:
+  1. FIRST call `get_character_visuals_for_scene` to get locked-down character appearances.
+  2. Pass the returned JSON as the `character_visuals` argument to `generate_scene_image`.
+  3. Attach the image to the scene using `attach_media_to_scene`.
+This ensures characters look consistent across all scene illustrations.
 
 ## TOOLS AVAILABLE
 - `get_beat_sheet`: Get the beat sheet to find the assigned beat
@@ -81,6 +86,7 @@ read it. If you generate an image, attach it to the scene using `attach_media_to
 - `get_current_script_state`: Check existing scenes for context
 - `get_scene`: Get a specific existing scene for reference
 - `generate_scene_image`: Generate a visual illustration of a key scene moment
+- `get_character_visuals_for_scene`: Get locked-down character appearance data for image consistency
 - `attach_media_to_scene`: Save a generated image URL to the scene
 
 After drafting, ALWAYS save the scene using add_scene_to_script.
@@ -106,6 +112,7 @@ def create_dialogue_specialist() -> LlmAgent:
             get_current_script_state,
             get_scene,
             generate_scene_image,
+            get_character_visuals_for_scene,
             attach_media_to_scene,
         ],
     )
