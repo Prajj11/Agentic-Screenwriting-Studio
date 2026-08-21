@@ -15,9 +15,10 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   isLoading: boolean;
   onSend: (text: string) => void;
+  onSelectTab?: (tab: 'script' | 'beats' | 'characters' | 'media') => void;
 }
 
-export function ChatPanel({ messages, isLoading, onSend }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, onSend, onSelectTab }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,49 +55,53 @@ export function ChatPanel({ messages, isLoading, onSend }: ChatPanelProps) {
                     {msg.text}
                   </ReactMarkdown>
 
-                  {/* Inline Video Player */}
-                  {msg.text.includes('/api/media/videos/') && (() => {
-                    const match = msg.text.match(/\/api\/media\/videos\/[a-zA-Z0-9_\-\.]+\.mp4/);
-                    if (!match) return null;
-                    const videoUrl = match[0].startsWith('http') ? match[0] : `http://localhost:8000${match[0]}`;
-                    return (
-                      <div style={{ marginTop: 'var(--space-md)', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-subtle)', background: '#000' }}>
-                        <video
-                          controls
-                          src={videoUrl}
-                          style={{ width: '100%', maxHeight: '320px', display: 'block' }}
-                        />
+                  {/* Compact Video Media Badge */}
+                  {msg.text.includes('/api/media/videos/') && (
+                    <div style={{ marginTop: 'var(--space-md)', padding: 'var(--space-sm) var(--space-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-accent)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--accent-primary)', fontWeight: 600 }}>
+                        <span>🎬</span> Video Performance Generated
                       </div>
-                    );
-                  })()}
+                      <button
+                        className="sidebar__btn"
+                        style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.75rem', background: 'var(--accent-primary)', color: '#fff', border: 'none' }}
+                        onClick={() => onSelectTab?.('media')}
+                      >
+                        ▶ Open Media Lab
+                      </button>
+                    </div>
+                  )}
 
-                  {/* Inline Image Viewer */}
-                  {msg.text.includes('/api/media/images/') && !msg.text.includes('/api/media/videos/') && (() => {
-                    const match = msg.text.match(/\/api\/media\/images\/[a-zA-Z0-9_\-\.]+\.(jpg|png|webp|jpeg)/i);
-                    if (!match) return null;
-                    const imgUrl = match[0].startsWith('http') ? match[0] : `http://localhost:8000${match[0]}`;
-                    return (
-                      <div style={{ marginTop: 'var(--space-md)', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
-                        <img
-                          src={imgUrl}
-                          alt="Generated Visual"
-                          style={{ width: '100%', maxHeight: '350px', objectFit: 'cover', display: 'block' }}
-                        />
+                  {/* Compact Image Media Badge */}
+                  {msg.text.includes('/api/media/images/') && !msg.text.includes('/api/media/videos/') && (
+                    <div style={{ marginTop: 'var(--space-md)', padding: 'var(--space-sm) var(--space-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-accent)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>
+                        <span>🖼️</span> Visual Concept Art Created
                       </div>
-                    );
-                  })()}
+                      <button
+                        className="sidebar__btn"
+                        style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.75rem', background: 'var(--surface-sunken)' }}
+                        onClick={() => onSelectTab?.('media')}
+                      >
+                        🖼️ View in Center Canvas
+                      </button>
+                    </div>
+                  )}
 
-                  {/* Inline Audio Player */}
-                  {msg.text.includes('/api/media/audio/') && (() => {
-                    const match = msg.text.match(/\/api\/media\/audio\/[a-zA-Z0-9_\-\.]+\.(wav|mp3|ogg)/i);
-                    if (!match) return null;
-                    const audioUrl = match[0].startsWith('http') ? match[0] : `http://localhost:8000${match[0]}`;
-                    return (
-                      <div style={{ marginTop: 'var(--space-md)', background: 'var(--surface-sunken)', padding: 'var(--space-sm)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                        <audio controls src={audioUrl} style={{ width: '100%', height: '36px' }} />
+                  {/* Compact Audio Media Badge */}
+                  {msg.text.includes('/api/media/audio/') && (
+                    <div style={{ marginTop: 'var(--space-md)', padding: 'var(--space-sm) var(--space-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        <span>🎵</span> Audio Performance Ready
                       </div>
-                    );
-                  })()}
+                      <button
+                        className="sidebar__btn"
+                        style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.75rem', background: 'var(--surface-sunken)' }}
+                        onClick={() => onSelectTab?.('script')}
+                      >
+                        📜 View in Script
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="chat-message__text" style={{ fontSize: '0.95rem', lineHeight: 1.6 }}>{msg.text}</div>

@@ -453,6 +453,8 @@ async def attach_media_to_scene(project_id: str, scene_number: int, media_type: 
 
     if media_type == "mood_board_image":
         scene.mood_board_image = url
+    elif media_type == "concept_video":
+        scene.concept_video = url
     elif media_type == "table_read_audio":
         scene.table_read_audio = url
     elif media_type == "soundtrack_audio":

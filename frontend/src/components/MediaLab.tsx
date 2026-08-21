@@ -14,6 +14,7 @@ interface MediaLabProps {
   projectId: string | null;
   scenes: Scene[];
   characters?: Record<string, any>;
+  mediaAnalyses?: MediaAnalysis[];
   activeSceneNumber: number;
   onAction: (prompt: string) => void;
 }
@@ -24,7 +25,7 @@ interface UploadProgressStep {
   status: 'pending' | 'active' | 'completed' | 'error';
 }
 
-export function MediaLab({ projectId, scenes, characters = {}, activeSceneNumber, onAction }: MediaLabProps) {
+export function MediaLab({ projectId, scenes, characters = {}, mediaAnalyses = [], activeSceneNumber, onAction }: MediaLabProps) {
   const [mediaList, setMediaList] = useState<MediaAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'visuals' | 'portraits' | 'audio' | 'video'>('all');
@@ -223,8 +224,18 @@ export function MediaLab({ projectId, scenes, characters = {}, activeSceneNumber
     return items;
   });
 
+  // Combine fetched mediaList with scriptState mediaAnalyses
+  const combinedMediaMap = new Map<string, MediaAnalysis>();
+  [...mediaAnalyses, ...mediaList].forEach(item => {
+    const key = item.media_id || item.filename || item.media_url;
+    if (key && !combinedMediaMap.has(key)) {
+      combinedMediaMap.set(key, item);
+    }
+  });
+  const allMediaItems = Array.from(combinedMediaMap.values());
+
   // Filter media analyses
-  const filteredMedia = mediaList.filter(item => {
+  const filteredMedia = allMediaItems.filter(item => {
     if (selectedSceneFilter !== 'all' && item.scene_number !== selectedSceneFilter) return false;
     return true;
   });

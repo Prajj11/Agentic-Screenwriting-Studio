@@ -344,7 +344,7 @@ async def generate_scene_video(
     # Save to ScriptState
     if project_id:
         try:
-            from tools.script_state import save_media_analysis
+            from tools.script_state import save_media_analysis, attach_media_to_scene
             await save_media_analysis(
                 project_id=project_id,
                 media_type="video",
@@ -363,6 +363,7 @@ async def generate_scene_video(
                     ],
                 },
             )
+            await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
         except Exception as err:
             logger.warning(f"Could not register generated video in ScriptState: {err}")
 

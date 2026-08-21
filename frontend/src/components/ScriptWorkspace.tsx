@@ -1,4 +1,4 @@
-import { Scene, ScriptState } from '@/lib/api';
+import { Scene, ScriptState, MediaAnalysis } from '@/lib/api';
 
 interface ScriptWorkspaceProps {
   scriptState: ScriptState | null;
@@ -59,55 +59,80 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
             setActiveScene(index);
           }}
         >
-          {/* Scene Experience (Image + Audio) */}
-          {scene.scene_number === currentScene?.scene_number && (scene.mood_board_image || scene.table_read_audio || scene.soundtrack_audio) && (
-            <div className="scene-experience" style={{ marginBottom: 'var(--space-xl)', background: 'var(--bg-tertiary)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)', marginBottom: 'var(--space-sm)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🎬 Scene Experience</div>
-              
-              {scene.mood_board_image && (
-                <div className="scene-media-image" style={{ marginBottom: 'var(--space-md)' }}>
-                  <img
-                    src={`http://localhost:8000${scene.mood_board_image}`}
-                    alt="Scene visual"
-                    style={{
-                      width: '100%',
-                      borderRadius: 'var(--radius-sm)',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                    }}
-                  />
-                </div>
-              )}
+          {/* Scene Experience (Video + Image + Audio) */}
+          {(() => {
+            const videoItem = scene.concept_video || scriptState.media_analyses?.find((m: MediaAnalysis) => m.scene_number === scene.scene_number && m.media_type === 'video')?.media_url;
+            const hasMedia = videoItem || scene.mood_board_image || scene.table_read_audio || scene.soundtrack_audio;
+            if (scene.scene_number !== currentScene?.scene_number || !hasMedia) return null;
 
-              {(scene.table_read_audio || scene.soundtrack_audio) && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-                  {scene.soundtrack_audio && (
-                    <div className="scene-media-audio">
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '2px' }}>🎵 Scene Soundtrack</div>
-                      <audio
-                        controls
-                        src={`http://localhost:8000${scene.soundtrack_audio}`}
-                        style={{ width: '100%', height: '32px' }}
-                      >
-                        Your browser does not support audio.
-                      </audio>
-                    </div>
-                  )}
-                  {scene.table_read_audio && (
-                    <div className="scene-media-audio">
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '2px' }}>🎙️ Table Read Dialogue</div>
-                      <audio
-                        controls
-                        src={`http://localhost:8000${scene.table_read_audio}`}
-                        style={{ width: '100%', height: '32px' }}
-                      >
-                        Your browser does not support audio.
-                      </audio>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+            return (
+              <div className="scene-experience" style={{ marginBottom: 'var(--space-xl)', background: 'var(--bg-tertiary)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)', marginBottom: 'var(--space-sm)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🎬 Scene Experience</div>
+                
+                {videoItem && (
+                  <div className="scene-media-video" style={{ marginBottom: 'var(--space-md)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🎥 Video Performance</div>
+                    <video
+                      controls
+                      src={videoItem.startsWith('http') ? videoItem : `http://localhost:8000${videoItem}`}
+                      style={{
+                        width: '100%',
+                        maxHeight: '360px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: '#000',
+                        display: 'block',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                      }}
+                    />
+                  </div>
+                )}
+
+                {scene.mood_board_image && (
+                  <div className="scene-media-image" style={{ marginBottom: 'var(--space-md)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>🖼️ Concept Art</div>
+                    <img
+                      src={`http://localhost:8000${scene.mood_board_image}`}
+                      alt="Scene visual"
+                      style={{
+                        width: '100%',
+                        borderRadius: 'var(--radius-sm)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                      }}
+                    />
+                  </div>
+                )}
+
+                {(scene.table_read_audio || scene.soundtrack_audio) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                    {scene.soundtrack_audio && (
+                      <div className="scene-media-audio">
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '2px' }}>🎵 Scene Soundtrack</div>
+                        <audio
+                          controls
+                          src={`http://localhost:8000${scene.soundtrack_audio}`}
+                          style={{ width: '100%', height: '32px' }}
+                        >
+                          Your browser does not support audio.
+                        </audio>
+                      </div>
+                    )}
+                    {scene.table_read_audio && (
+                      <div className="scene-media-audio">
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '2px' }}>🎙️ Table Read Dialogue</div>
+                        <audio
+                          controls
+                          src={`http://localhost:8000${scene.table_read_audio}`}
+                          style={{ width: '100%', height: '32px' }}
+                        >
+                          Your browser does not support audio.
+                        </audio>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Slugline */}
           {scene.slugline && (

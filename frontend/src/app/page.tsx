@@ -258,6 +258,18 @@ export default function StudioPage() {
       if (response.project_id) {
         await refreshScriptState(response.project_id);
       }
+
+      // Smart auto-tab switching based on generated content
+      const textLower = (message + ' ' + (response.response_text || '')).toLowerCase();
+      if (textLower.includes('/api/media/videos/') || textLower.includes('/api/media/images/') || textLower.includes('visualize') || textLower.includes('video') || textLower.includes('concept art') || textLower.includes('portrait')) {
+        setActiveTab('media');
+      } else if (textLower.includes('beat sheet') || textLower.includes('story architect') || textLower.includes('beat')) {
+        setActiveTab('beats');
+      } else if (textLower.includes('character bible') || textLower.includes('character profile')) {
+        setActiveTab('characters');
+      } else if (textLower.includes('draft scene') || textLower.includes('dialogue specialist') || textLower.includes('screenplay')) {
+        setActiveTab('script');
+      }
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Unknown error';
       const errMsg: ChatMessage = {
@@ -353,6 +365,7 @@ export default function StudioPage() {
             messages={messages} 
             isLoading={isLoading} 
             onSend={handleSend} 
+            onSelectTab={(tab) => setActiveTab(tab)}
           />
           <div className="workspace-container" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
              {activeTab === 'script' && (
@@ -381,6 +394,7 @@ export default function StudioPage() {
                   projectId={projectId}
                   scenes={scriptState?.scenes || []}
                   characters={scriptState?.characters || {}}
+                  mediaAnalyses={scriptState?.media_analyses || []}
                   activeSceneNumber={currentScene?.scene_number || 0}
                   onAction={handleSend}
                 />
