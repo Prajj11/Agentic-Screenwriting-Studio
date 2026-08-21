@@ -115,10 +115,16 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
         all_audio_data = []
 
         if len(unique_chars) <= 2:
-            # Simple case: 2 or fewer speakers, single API call
-            speaker_configs = []
-            for char in unique_chars:
-                speaker_configs.append(
+            if len(unique_chars) == 1:
+                speech_config = types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice_map[unique_chars[0]],
+                        )
+                    )
+                )
+            else:
+                speaker_configs = [
                     types.SpeakerVoiceConfig(
                         speaker=char,
                         voice_config=types.VoiceConfig(
@@ -127,13 +133,13 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                             )
                         ),
                     )
+                    for char in unique_chars
+                ]
+                speech_config = types.SpeechConfig(
+                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                        speaker_voice_configs=speaker_configs,
+                    )
                 )
-
-            speech_config = types.SpeechConfig(
-                multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                    speaker_voice_configs=speaker_configs,
-                )
-            )
 
             response = client.models.generate_content(
                 model=settings.gemini_tts_model,
@@ -144,29 +150,42 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                 ),
             )
 
-            if response.candidates and response.candidates[0].content.parts:
+            if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
                     if hasattr(part, "inline_data") and part.inline_data:
                         all_audio_data.append(part.inline_data.data)
 
         else:
             # Complex case: 3+ speakers — batch into sequential 2-speaker chunks
-            # Group dialogue into segments where max 2 speakers appear
             segments = _split_dialogue_for_tts(dialogue, voice_map)
 
             for segment in segments:
                 seg_chars = list(set(dl["character"] for dl in segment["lines"]))
-                speaker_configs = [
-                    types.SpeakerVoiceConfig(
-                        speaker=char,
+                if len(seg_chars) == 1:
+                    speech_config = types.SpeechConfig(
                         voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=voice_map.get(char, AVAILABLE_VOICES[0]),
+                                voice_name=voice_map.get(seg_chars[0], AVAILABLE_VOICES[0]),
                             )
-                        ),
+                        )
                     )
-                    for char in seg_chars[:2]
-                ]
+                else:
+                    speaker_configs = [
+                        types.SpeakerVoiceConfig(
+                            speaker=char,
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name=voice_map.get(char, AVAILABLE_VOICES[0]),
+                                )
+                            ),
+                        )
+                        for char in seg_chars[:2]
+                    ]
+                    speech_config = types.SpeechConfig(
+                        multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                            speaker_voice_configs=speaker_configs,
+                        )
+                    )
 
                 seg_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
                 for dl in segment["lines"]:
@@ -175,12 +194,6 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
                         seg_text += f"{dl['character']} {parenthetical}: {dl['line']}\n"
                     else:
                         seg_text += f"{dl['character']}: {dl['line']}\n"
-
-                speech_config = types.SpeechConfig(
-                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                        speaker_voice_configs=speaker_configs,
-                    )
-                )
 
                 try:
                     response = client.models.generate_content(

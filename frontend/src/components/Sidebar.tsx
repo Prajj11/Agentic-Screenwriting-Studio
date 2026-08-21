@@ -8,14 +8,15 @@ interface SidebarProps {
   isLoading: boolean;
   connected: boolean;
   chHealth: ClickHouseHealth | null;
-  activeTab: 'script' | 'beats' | 'characters';
-  setActiveTab: (tab: 'script' | 'beats' | 'characters') => void;
+  activeTab: 'script' | 'beats' | 'characters' | 'media';
+  setActiveTab: (tab: 'script' | 'beats' | 'characters' | 'media') => void;
   isProjectView: boolean;
 }
 
 const QUICK_ACTIONS = [
   { label: '📐 Beat Sheet', prompt: 'Generate the beat sheet for this story', icon: '📐' },
   { label: '✍️ Draft Scene', prompt: 'Draft the next scene from the beat sheet', icon: '✍️' },
+  { label: '🎥 Analyze Media', prompt: 'Analyze uploaded reference image or video', icon: '🎥' },
   { label: '🔍 Check Continuity', prompt: 'Run a continuity check on the latest scene', icon: '🔍' },
   { label: '🎙️ Table Read', prompt: 'Perform a table read of the latest scene', icon: '🎙️' },
   { label: '🎨 Visualize', prompt: 'Generate a mood board for the latest scene', icon: '🎨' },
@@ -65,6 +66,11 @@ export function Sidebar({ isOpen, onClose, onNavigateDashboard, onAction, isLoad
               <button className="sidebar__btn" style={{ background: activeTab === 'characters' ? 'var(--bg-active)' : 'transparent' }} onClick={() => setActiveTab('characters')}>
                 <span className="sidebar__btn-icon">👥</span>
                 <span className="sidebar__btn-label">Characters</span>
+              </button>
+
+              <button className="sidebar__btn" style={{ background: activeTab === 'media' ? 'var(--bg-active)' : 'transparent' }} onClick={() => setActiveTab('media')}>
+                <span className="sidebar__btn-icon">🎥</span>
+                <span className="sidebar__btn-label">Media Lab</span>
               </button>
 
               <div className="sidebar__divider" />

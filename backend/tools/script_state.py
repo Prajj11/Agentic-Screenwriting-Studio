@@ -11,7 +11,7 @@ import logging
 from typing import Optional
 
 from models.script_state import (
-    ScriptState, Scene, Character, Beat, ContinuityFact,
+    ScriptState, Scene, Character, Beat, ContinuityFact, MediaAnalysis,
     DialogueLine, SceneStatus, BeatStatus,
     Genre, ScriptFormat, StructuralFramework,
     normalize_enum,
@@ -469,3 +469,88 @@ async def attach_media_to_scene(project_id: str, scene_number: int, media_type: 
         "url": url,
         "message": f"Successfully attached {media_type} to scene {scene_number}."
     })
+
+
+# ── Media Analysis Functions ──────────────────────────────────────────
+
+async def save_media_analysis(
+    project_id: str,
+    media_type: str,
+    media_url: str,
+    filename: str = "",
+    scene_number: Optional[int] = None,
+    is_canon: bool = False,
+    caption: str = "",
+    structured_description: Optional[dict] = None,
+) -> str:
+    """
+    Save a new media analysis entry to the Script State.
+    """
+    state = await _get_state(project_id)
+    analysis = MediaAnalysis(
+        project_id=project_id,
+        media_type=media_type,
+        media_url=media_url,
+        filename=filename,
+        scene_number=scene_number,
+        is_canon=is_canon,
+        caption=caption,
+        structured_description=structured_description or {},
+    )
+    state.media_analyses.append(analysis)
+    await _save_state(project_id)
+
+    return json.dumps({
+        "success": True,
+        "media_id": analysis.media_id,
+        "media_type": analysis.media_type,
+        "is_canon": analysis.is_canon,
+        "scene_number": analysis.scene_number,
+    })
+
+
+async def get_project_media_analyses(project_id: str) -> str:
+    """
+    Get all media analysis items for a project as JSON.
+    """
+    state = await _get_state(project_id)
+    return json.dumps([m.model_dump() for m in state.media_analyses], indent=2)
+
+
+async def mark_media_canon(project_id: str, media_id: str, is_canon: bool) -> str:
+    """
+    Toggle whether a media item is marked as CANON or REFERENCE.
+    """
+    state = await _get_state(project_id)
+    item = next((m for m in state.media_analyses if m.media_id == media_id), None)
+    if not item:
+        return json.dumps({"success": False, "error": f"Media item {media_id} not found."})
+
+    item.is_canon = is_canon
+    await _save_state(project_id)
+    return json.dumps({"success": True, "media_id": media_id, "is_canon": item.is_canon})
+
+
+async def associate_media_scene(project_id: str, media_id: str, scene_number: Optional[int]) -> str:
+    """
+    Associate a media analysis item with a specific scene number (or None for project-level).
+    """
+    state = await _get_state(project_id)
+    item = next((m for m in state.media_analyses if m.media_id == media_id), None)
+    if not item:
+        return json.dumps({"success": False, "error": f"Media item {media_id} not found."})
+
+    item.scene_number = scene_number
+    await _save_state(project_id)
+    return json.dumps({"success": True, "media_id": media_id, "scene_number": item.scene_number})
+
+
+async def delete_media_analysis(project_id: str, media_id: str) -> str:
+    """
+    Delete a media analysis item from the script state.
+    """
+    state = await _get_state(project_id)
+    state.media_analyses = [m for m in state.media_analyses if m.media_id != media_id]
+    await _save_state(project_id)
+    return json.dumps({"success": True, "media_id": media_id})
+

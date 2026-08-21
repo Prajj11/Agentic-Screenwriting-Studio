@@ -53,6 +53,50 @@ export function ChatPanel({ messages, isLoading, onSend }: ChatPanelProps) {
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {msg.text}
                   </ReactMarkdown>
+
+                  {/* Inline Video Player */}
+                  {msg.text.includes('/api/media/videos/') && (() => {
+                    const match = msg.text.match(/\/api\/media\/videos\/[a-zA-Z0-9_\-\.]+\.mp4/);
+                    if (!match) return null;
+                    const videoUrl = match[0].startsWith('http') ? match[0] : `http://localhost:8000${match[0]}`;
+                    return (
+                      <div style={{ marginTop: 'var(--space-md)', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-subtle)', background: '#000' }}>
+                        <video
+                          controls
+                          src={videoUrl}
+                          style={{ width: '100%', maxHeight: '320px', display: 'block' }}
+                        />
+                      </div>
+                    );
+                  })()}
+
+                  {/* Inline Image Viewer */}
+                  {msg.text.includes('/api/media/images/') && !msg.text.includes('/api/media/videos/') && (() => {
+                    const match = msg.text.match(/\/api\/media\/images\/[a-zA-Z0-9_\-\.]+\.(jpg|png|webp|jpeg)/i);
+                    if (!match) return null;
+                    const imgUrl = match[0].startsWith('http') ? match[0] : `http://localhost:8000${match[0]}`;
+                    return (
+                      <div style={{ marginTop: 'var(--space-md)', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+                        <img
+                          src={imgUrl}
+                          alt="Generated Visual"
+                          style={{ width: '100%', maxHeight: '350px', objectFit: 'cover', display: 'block' }}
+                        />
+                      </div>
+                    );
+                  })()}
+
+                  {/* Inline Audio Player */}
+                  {msg.text.includes('/api/media/audio/') && (() => {
+                    const match = msg.text.match(/\/api\/media\/audio\/[a-zA-Z0-9_\-\.]+\.(wav|mp3|ogg)/i);
+                    if (!match) return null;
+                    const audioUrl = match[0].startsWith('http') ? match[0] : `http://localhost:8000${match[0]}`;
+                    return (
+                      <div style={{ marginTop: 'var(--space-md)', background: 'var(--surface-sunken)', padding: 'var(--space-sm)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                        <audio controls src={audioUrl} style={{ width: '100%', height: '36px' }} />
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="chat-message__text" style={{ fontSize: '0.95rem', lineHeight: 1.6 }}>{msg.text}</div>

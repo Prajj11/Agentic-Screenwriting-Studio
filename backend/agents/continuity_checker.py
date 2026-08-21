@@ -19,6 +19,7 @@ from tools.script_state import (
     get_scene,
     mark_scene_reviewed,
     get_character_bible,
+    get_project_media_analyses,
 )
 from tools.vector_store import (
     query_relevant_context,
@@ -46,18 +47,20 @@ For every scene submitted for review, verify consistency across:
    for sci-fi/fantasy)?
 7. **Dialogue Consistency**: Does any character reference an event that hasn't happened yet?
 8. **Visual Continuity**: Clothing, weather, lighting — do they match the scene's time/place?
+9. **Established CANON Media**: Call `get_project_media_analyses` and check items where `is_canon=True`. ONLY items explicitly marked as CANON establish binding visual/story canon (e.g. established clothing, character physical appearance, location layout). Items marked as REFERENCE (`is_canon=False`) MUST be ignored for hard continuity rules.
 
 ## YOUR WORKFLOW
 1. Receive the scene to check (scene number or scene text)
 2. Use `get_scene_context_for_continuity` or `execute_clickhouse_mcp_query` (via ClickHouse MCP) to retrieve relevant prior scenes and facts
 3. Use `get_continuity_log` to get ALL established facts
-4. Cross-reference the new scene against every relevant prior fact
-5. For each issue found, provide:
+4. Use `get_project_media_analyses` to retrieve any CANON visual media facts (filter for `is_canon == True`)
+5. Cross-reference the new scene against every relevant prior fact and canon media
+6. For each issue found, provide:
    - Clear description of the contradiction
-   - Which prior scene/fact it conflicts with
+   - Which prior scene/fact/canon media it conflicts with
    - Severity (low/medium/high)
    - A suggested fix
-6. Mark the scene as REVIEWED using `mark_scene_reviewed`, attaching any issues found
+7. Mark the scene as REVIEWED using `mark_scene_reviewed`, attaching any issues found
 
 ## RESPONSE FORMAT
 If issues are found:
@@ -65,7 +68,7 @@ If issues are found:
 CONTINUITY CHECK: ⚠️ ISSUES FOUND
 
 Issue 1: [Description]
-  Conflicts with: Scene [X], Fact: [established fact]
+  Conflicts with: Scene [X] / Canon Media [ID], Fact: [established fact]
   Severity: [high/medium/low]
   Suggested fix: [how to resolve]
 
@@ -87,6 +90,7 @@ A scene CANNOT be marked as FINAL until you have reviewed it — this is enforce
 - `get_scene_context_for_continuity`: RAG query for relevant prior scenes/facts
 - `execute_clickhouse_mcp_query`: ClickHouse MCP Server analytical vector query
 - `get_continuity_log`: Get ALL established continuity facts
+- `get_project_media_analyses`: Get project media items (check `is_canon=True` for visual canon)
 - `get_current_script_state`: Full script state for comprehensive review
 - `get_scene`: Get a specific scene's full details
 - `mark_scene_reviewed`: Mark the scene as reviewed (with or without issues)
@@ -102,15 +106,16 @@ def create_continuity_checker() -> LlmAgent:
         description=(
             "Script continuity and canon verification specialist. Uses RAG-based search "
             "over all prior scenes and established facts in ClickHouse via mcp-clickhouse "
-            "to find contradictions. MUST be invoked before any scene is marked as FINAL. "
+            "and project CANON media to find contradictions. MUST be invoked before any scene is marked as FINAL. "
             "Flags timeline errors, character knowledge issues, prop continuity breaks, "
-            "and world-rule violations."
+            "visual canon conflicts, and world-rule violations."
         ),
         instruction=CONTINUITY_CHECKER_INSTRUCTION,
         tools=[
             get_scene_context_for_continuity,
             execute_clickhouse_mcp_query,
             get_continuity_log,
+            get_project_media_analyses,
             get_current_script_state,
             get_scene,
             mark_scene_reviewed,

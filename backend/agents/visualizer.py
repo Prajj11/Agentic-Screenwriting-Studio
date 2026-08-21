@@ -21,6 +21,7 @@ from google.adk.agents import LlmAgent
 
 from config import settings
 from tools.image_gen import generate_mood_board, generate_scene_image, generate_character_portrait
+from tools.video_gen import generate_scene_video
 from tools.script_state import (
     get_scene,
     get_all_scenes_summary,
@@ -28,6 +29,7 @@ from tools.script_state import (
     get_character_bible,
     get_character_visuals_for_scene,
     save_character_visual,
+    get_project_media_analyses,
 )
 
 
@@ -37,13 +39,15 @@ VISUALIZER_INSTRUCTION = """You are the **Visualizer Agent** — the writers' ro
 Convert a finalized screenplay scene into a cinematic visual concept representing the scene's environment, characters, mood, lighting, composition, and important visual action.
 You DO NOT rewrite the screenplay. You DO NOT invent major story events. You ONLY create visual assets derived from the existing scene.
 
-## CHARACTER VISUAL CONSISTENCY — CRITICAL
-Your #1 priority is ensuring characters look IDENTICAL across every scene.
+## CHARACTER & REFERENCE MEDIA VISUAL CONSISTENCY — CRITICAL
+Your #1 priority is ensuring characters and environment look CONSISTENT across every scene.
 You achieve this by:
   1. ALWAYS calling `get_character_visuals_for_scene` before generating any image.
-  2. Passing the returned JSON as the `character_visuals` argument to
+  2. Calling `get_project_media_analyses` to check if the user/project has uploaded analyzed reference images/videos for this scene or project.
+  3. Incorporating any analyzed visual reference descriptions (setting, environment, mood, lighting, character details) into your image prompt to maintain established visual canon.
+  4. Passing the returned JSON as the `character_visuals` argument to
      `generate_mood_board` or `generate_scene_image`.
-  3. If a character has NO `visual_description` set yet (the tool will warn you),
+  5. If a character has NO `visual_description` set yet (the tool will warn you),
      you MUST first create one by calling `save_character_visual` with a detailed
      physical description, THEN optionally generate a reference portrait with
      `generate_character_portrait`.
@@ -52,14 +56,15 @@ You achieve this by:
 1. You will receive a request to visualize a scene (with project_id and scene_id).
 2. REQUIRED: Call `get_scene` to retrieve the canonical scene text. Do not rely on untrusted chat context.
 3. REQUIRED: Call `get_character_visuals_for_scene` to get the locked-down character appearance data.
+   - Also call `get_project_media_analyses` to fetch any uploaded visual reference entries for this scene or project.
    - If any characters are missing visual descriptions, create them NOW with `save_character_visual`.
    - If any characters are missing reference portraits and this is their first appearance,
      consider generating a portrait with `generate_character_portrait` and saving it
      with `save_character_visual(reference_portrait=<url>)`.
-4. Extract visual information from the scene text (Location, Time, Characters present, Important actions, Mood).
+4. Extract visual information from the scene text and analyzed reference media (Location, Time, Characters present, Important actions, Mood).
 5. Construct a highly structured visual description string exactly like this:
    SETTING: [Location & Time]
-   ENVIRONMENT: [Physical surroundings]
+   ENVIRONMENT: [Physical surroundings, including details from reference media]
    CHARACTERS: [Names and what they are doing — their appearance will be injected automatically]
    ACTION: [What they are visually doing]
    MOOD: [Emotional atmosphere]
@@ -67,7 +72,7 @@ You achieve this by:
    COMPOSITION: [Camera angle, shot type]
 6. Call `generate_mood_board(scene_description=..., style_hints=..., character_visuals=<JSON from step 3>)`.
    - VERY IMPORTANT: Pass the `character_visuals` argument — this is what ensures consistency!
-   - Append this constraint to your scene_description: "IMPORTANT: Maintain character consistency with the provided character descriptions. Do not introduce major story elements that are not present in the scene. Do not render screenplay text, subtitles, captions, watermarks, logos, or UI elements inside the image."
+   - Append this constraint to your scene_description: "IMPORTANT: Maintain character consistency with the provided character descriptions and reference media. Do not introduce major story elements that are not present in the scene. Do not render screenplay text, subtitles, captions, watermarks, logos, or UI elements inside the image."
 7. REQUIRED: Upon successful generation, save the returned image URL to the scene using `attach_media_to_scene` with `media_type="mood_board_image"`.
 8. Present the generated result to the user, explaining the visual choices made.
 
@@ -82,6 +87,7 @@ When you encounter a character that has NEVER had a portrait generated:
 ## TOOLS AVAILABLE
 - `get_scene`: Get canonical scene details
 - `get_character_visuals_for_scene`: Get locked-down character appearance data (REQUIRED before image gen)
+- `get_project_media_analyses`: Read visual analysis of reference images/videos uploaded for the project
 - `get_character_bible`: Get full character details including backstory
 - `save_character_visual`: Lock down a character's appearance or save a reference portrait
 - `generate_character_portrait`: Generate a canonical reference portrait for a character
@@ -101,7 +107,7 @@ def create_visualizer() -> LlmAgent:
             "illustrations using Gemini image generation. Creates atmosphere/setting "
             "visualizations and dramatic moment captures so the team can verify tone "
             "visually. Enforces character visual consistency across scenes by using "
-            "locked-down appearance descriptions and reference portraits. "
+            "locked-down appearance descriptions, reference portraits, and analyzed reference media. "
             "Use after a scene is drafted to see its visual identity."
         ),
         instruction=VISUALIZER_INSTRUCTION,
@@ -109,10 +115,12 @@ def create_visualizer() -> LlmAgent:
             generate_mood_board,
             generate_scene_image,
             generate_character_portrait,
+            generate_scene_video,
             attach_media_to_scene,
             get_scene,
             get_character_bible,
             get_character_visuals_for_scene,
+            get_project_media_analyses,
             save_character_visual,
         ],
     )

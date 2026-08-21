@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004")
     lyria_music_model: str = os.getenv("LYRIA_MUSIC_MODEL", "lyria-3-pro-preview")
     lyria_music_clip_model: str = os.getenv("LYRIA_MUSIC_CLIP_MODEL", "lyria-3-clip-preview")
+    veo_video_model: str = os.getenv("VEO_VIDEO_MODEL", "veo-3.1-generate-001")
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"
@@ -62,6 +63,7 @@ class Settings(BaseSettings):
     # ── Output Directories ────────────────────────────────────────────
     output_images_dir: str = str(_backend_dir / "output" / "images")
     output_audio_dir: str = str(_backend_dir / "output" / "audio")
+    output_videos_dir: str = str(_backend_dir / "output" / "videos")
 
     class Config:
         env_file = ".env"
@@ -74,6 +76,7 @@ class Settings(BaseSettings):
             self.sqlite_db_path.rsplit("/", 1)[0] if "/" in self.sqlite_db_path else "data",
             self.output_images_dir,
             self.output_audio_dir,
+            self.output_videos_dir,
         ]:
             Path(dir_path).mkdir(parents=True, exist_ok=True)
 

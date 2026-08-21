@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,7 +40,13 @@ from models.api_models import (
 from models.script_state import ScriptState, ScriptFormat, Genre, StructuralFramework
 from db.sqlite_store import get_sqlite_store
 from db.vector_router import get_vector_store
-from tools.script_state import set_active_state, get_active_state_sync, _active_states, _normalize_enum
+from tools.script_state import (
+    set_active_state, get_active_state_sync, _active_states, _normalize_enum,
+    save_media_analysis, get_project_media_analyses, mark_media_canon, associate_media_scene, delete_media_analysis
+)
+from tools.image_analyzer import analyze_image
+from tools.video_analyzer import analyze_video
+from tools.video_gen import generate_scene_video
 
 # ── Gemini Rate Limit Monkey Patch ──────────────────────────────────────
 import time
@@ -187,6 +193,7 @@ _agent_statuses: dict[str, dict] = {
     "Visualizer": {"status": "idle", "display_name": "🎨 Visualizer", "icon": "🎨", "last_active": None},
     "TableRead": {"status": "idle", "display_name": "🎙️ Table Read", "icon": "🎙️", "last_active": None},
     "Composer": {"status": "idle", "display_name": "🎵 Composer", "icon": "🎵", "last_active": None},
+    "MediaAnalyzer": {"status": "idle", "display_name": "🎥 Media Analyzer", "icon": "🎥", "last_active": None},
 }
 
 # ── ADK Runner ────────────────────────────────────────────────────────
@@ -706,6 +713,7 @@ async def get_agent_statuses():
         "Visualizer": "Generates concept art mood boards",
         "TableRead": "Performs TTS audio of dialogue",
         "Composer": "Generates cinematic soundtracks using Lyria 3",
+        "MediaAnalyzer": "Analyzes reference images & videos",
     }
     for name, info in _agent_statuses.items():
         agents.append(AgentStatus(
@@ -737,6 +745,171 @@ async def serve_audio(filename: str):
     if not filepath.exists():
         raise HTTPException(404, f"Audio not found: {filename}")
     return FileResponse(str(filepath), media_type="audio/wav")
+
+
+@app.get("/api/media/videos/{filename}")
+async def serve_video(filename: str):
+    """Serve a generated scene video clip file."""
+    filepath = Path(settings.output_videos_dir) / filename
+    if not filepath.exists():
+        raise HTTPException(404, f"Video not found: {filename}")
+    return FileResponse(str(filepath), media_type="video/mp4")
+
+
+@app.post("/api/video/generate")
+async def generate_video_endpoint(payload: dict):
+    """Generate a video performance for a scene."""
+    scene_number = payload.get("scene_number", 1)
+    scene_description = payload.get("scene_description", "Cinematic screenplay scene performance")
+    dialogue_context = payload.get("dialogue_context", "")
+    characters = payload.get("characters", "")
+
+    result_json = await generate_scene_video(
+        scene_number=scene_number,
+        scene_description=scene_description,
+        dialogue_context=dialogue_context,
+        characters=characters,
+    )
+    return json.loads(result_json)
+
+
+@app.get("/api/media/uploads/{filename}")
+async def serve_upload(filename: str):
+    """Serve an uploaded reference image or video file."""
+    uploads_dir = Path(settings.sqlite_db_path).parent / "uploads"
+    filepath = uploads_dir / filename
+    if not filepath.exists():
+        raise HTTPException(404, f"Uploaded media file not found: {filename}")
+    
+    mime_type, _ = mimetypes.guess_type(str(filepath))
+    return FileResponse(str(filepath), media_type=mime_type or "application/octet-stream")
+
+
+@app.post("/api/media/upload")
+async def upload_media(
+    file: UploadFile = File(...),
+    project_id: str = Form(...),
+    scene_number: Optional[int] = Form(None),
+    is_canon: bool = Form(False),
+):
+    """
+    Upload a reference image or video, run Gemini multimodal analysis,
+    and persist the result into the project's ScriptState.
+    """
+    try:
+        uploads_dir = Path(settings.sqlite_db_path).parent / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = Path(file.filename).suffix or ".bin"
+        unique_name = f"upload_{uuid.uuid4().hex[:8]}{ext}"
+        filepath = uploads_dir / unique_name
+
+        # Save uploaded file bytes
+        content = await file.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        # Determine media type (image vs video)
+        mime = file.content_type or ""
+        if mime.startswith("video/") or ext.lower() in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
+            media_type = "video"
+        else:
+            media_type = "image"
+
+        # Broadcast status update
+        _agent_statuses["MediaAnalyzer"]["status"] = "working"
+        _agent_statuses["MediaAnalyzer"]["last_active"] = datetime.now().isoformat()
+        await broadcast_event({
+            "type": "agent_start",
+            "agent": "MediaAnalyzer",
+            "content": f"Analyzing {media_type}: {file.filename}...",
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        # Run Gemini analysis
+        if media_type == "video":
+            raw_analysis = await analyze_video(str(filepath))
+        else:
+            raw_analysis = await analyze_image(str(filepath))
+
+        _agent_statuses["MediaAnalyzer"]["status"] = "idle"
+        await broadcast_event({
+            "type": "agent_end",
+            "agent": "MediaAnalyzer",
+            "content": "Analysis complete",
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        analysis_data = json.loads(raw_analysis)
+        if not analysis_data.get("success", False):
+            raise HTTPException(500, analysis_data.get("error", "Analysis failed"))
+
+        structured_desc = analysis_data.get("structured_description", {})
+        summary = analysis_data.get("summary", "")
+
+        media_url = f"/api/media/uploads/{unique_name}"
+
+        # Persist into Script State
+        raw_res = await save_media_analysis(
+            project_id=project_id,
+            media_type=media_type,
+            media_url=media_url,
+            filename=file.filename or unique_name,
+            scene_number=scene_number,
+            is_canon=is_canon,
+            caption=summary,
+            structured_description=structured_desc,
+        )
+        saved_info = json.loads(raw_res)
+
+        return {
+            "success": True,
+            "media_id": saved_info.get("media_id"),
+            "project_id": project_id,
+            "media_type": media_type,
+            "media_url": media_url,
+            "filename": file.filename,
+            "scene_number": scene_number,
+            "is_canon": is_canon,
+            "caption": summary,
+            "structured_description": structured_desc,
+            "created_at": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        _agent_statuses["MediaAnalyzer"]["status"] = "idle"
+        logger.error(f"Error in upload_media: {e}", exc_info=True)
+        raise HTTPException(500, f"Media processing failed: {str(e)}")
+
+
+@app.get("/api/media/project/{project_id}")
+async def list_project_media(project_id: str):
+    """List all analyzed media items for a project."""
+    res = await get_project_media_analyses(project_id)
+    return json.loads(res)
+
+
+@app.patch("/api/media/project/{project_id}/{media_id}")
+async def update_media_item(
+    project_id: str,
+    media_id: str,
+    payload: dict,
+):
+    """Update canon flag or scene association for a media item."""
+    if "is_canon" in payload:
+        await mark_media_canon(project_id, media_id, bool(payload["is_canon"]))
+    if "scene_number" in payload:
+        sn = payload["scene_number"]
+        await associate_media_scene(project_id, media_id, int(sn) if sn is not None else None)
+    return {"status": "updated", "media_id": media_id}
+
+
+@app.delete("/api/media/project/{project_id}/{media_id}")
+async def delete_media_item(project_id: str, media_id: str):
+    """Delete a media item from the project script state."""
+    await delete_media_analysis(project_id, media_id)
+    return {"status": "deleted", "media_id": media_id}
+
 
 
 # ── Export ────────────────────────────────────────────────────────────

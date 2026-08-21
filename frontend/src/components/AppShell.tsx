@@ -14,8 +14,8 @@ interface AppShellProps {
   connected: boolean;
   isLoading: boolean;
   chHealth: ClickHouseHealth | null;
-  activeTab: 'script' | 'beats' | 'characters';
-  setActiveTab: (tab: 'script' | 'beats' | 'characters') => void;
+  activeTab: 'script' | 'beats' | 'characters' | 'media';
+  setActiveTab: (tab: 'script' | 'beats' | 'characters' | 'media') => void;
 }
 
 export function AppShell({

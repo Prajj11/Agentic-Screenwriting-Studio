@@ -28,22 +28,23 @@ import { AgentStatusPanel } from '@/components/AgentStatus';
 import { ScriptWorkspace } from '@/components/ScriptWorkspace';
 import { BeatSheet } from '@/components/BeatSheet';
 import { CharacterBible } from '@/components/CharacterBible';
+import { MediaLab } from '@/components/MediaLab';
 
-// ΓöÇΓöÇ Types ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-
-
-
-// ΓöÇΓöÇ Quick Action Presets ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Types ─────────────────────────────────────────────────────────────
 
 
 
-// ΓöÇΓöÇ Main Page Component ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Quick Action Presets ───────────────────────────────────────────────
+
+
+
+// ── Main Page Component ────────────────────────────────────────────────
 
 export default function StudioPage() {
   // View state
   const [view, setView] = useState<'dashboard' | 'project'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'script' | 'beats' | 'characters'>('script');
+  const [activeTab, setActiveTab] = useState<'script' | 'beats' | 'characters' | 'media'>('script');
 
   // Project management
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -373,6 +374,15 @@ export default function StudioPage() {
              {activeTab === 'characters' && (
                 <CharacterBible 
                   characters={scriptState?.characters || {}}
+                />
+             )}
+             {activeTab === 'media' && (
+                <MediaLab
+                  projectId={projectId}
+                  scenes={scriptState?.scenes || []}
+                  characters={scriptState?.characters || {}}
+                  activeSceneNumber={currentScene?.scene_number || 0}
+                  onAction={handleSend}
                 />
              )}
           </div>

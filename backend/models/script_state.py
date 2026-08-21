@@ -199,6 +199,20 @@ class ClearanceFlag(BaseModel):
     resolved: bool = False
 
 
+class MediaAnalysis(BaseModel):
+    """An analyzed media item (image or video) attached to a project/scene."""
+    media_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    project_id: str
+    media_type: str                         # "image" or "video"
+    media_url: str                          # URL or relative path to access the file
+    filename: str = ""
+    scene_number: Optional[int] = None      # Optional scene association
+    is_canon: bool = False                  # REFERENCE vs CANON
+    caption: str = ""                       # Summary / caption string
+    structured_description: dict = Field(default_factory=dict) # Image analysis or video transcript/events
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
 class Scene(BaseModel):
     """A full scene in the screenplay."""
     scene_number: int
@@ -284,6 +298,9 @@ class ScriptState(BaseModel):
 
     # Continuity
     continuity_log: list[ContinuityFact] = Field(default_factory=list)
+
+    # Media Analysis
+    media_analyses: list[MediaAnalysis] = Field(default_factory=list)
 
     # Metadata
     metadata: ScriptMetadata = Field(default_factory=ScriptMetadata)

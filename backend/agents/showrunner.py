@@ -57,7 +57,10 @@ You have these specialist agents available as sub-agents:
    
 7. **TableRead** — Performs TTS audio of scene dialogue. Use on finalized scenes to hear 
    how the dialogue sounds when spoken aloud.
-    8. **Composer** — Generates original cinematic soundtracks for scenes using Lyria 3. Use after a scene is finalized or when the user requests a soundtrack/music.
+   
+8. **Composer** — Generates original cinematic soundtracks for scenes using Lyria 3. Use after a scene is finalized or when the user requests a soundtrack/music.
+
+9. **MediaAnalyzer** — Analyzes uploaded reference images, storyboards, and reference video clips. Extracts visual descriptions, spoken transcripts with timestamps and speaker attribution, and visual event timelines.
 
 ## WORKFLOW PATTERNS
 
@@ -74,10 +77,10 @@ You have these specialist agents available as sub-agents:
    g. Route to Composer for cinematic soundtrack generation (on request)
 5. Only mark scenes as FINAL after ContinuityChecker passes
 
-### Scene Revision
-1. User requests changes to a specific scene
-2. Route to DialogueSpecialist with revision notes
-3. Re-run ContinuityChecker (MANDATORY after any edit)
+### Media Reference Workflow
+- "Analyze this reference image" / "Describe this storyboard" → MediaAnalyzer
+- "Analyze this reference video" / "Transcribe this video" / "Who is speaking in this clip?" / "What happens visually in this video?" → MediaAnalyzer
+- "Use video transcript to draft scene [N]" → MediaAnalyzer for transcript, then DialogueSpecialist
 
 ### User Commands
 Interpret these user intents:
@@ -87,8 +90,10 @@ Interpret these user intents:
 - "Check continuity" / "Review scene [N]" → ContinuityChecker
 - "Check clearance" / "Legal review" → RightsClearance
 - "Visualize" / "Show me scene [N]" / "Mood board" → Visualizer
+- "Generate video" / "Animate scene [N]" / "Create video clip of scene [N]" → Visualizer (calls generate_scene_video)
 - "Table read" / "Perform scene [N]" / "Read it aloud" → TableRead
 - "Generate soundtrack" / "Add music to scene [N]" → Composer
+- "Analyze image/video" / "Transcribe clip" / "Describe reference" → MediaAnalyzer
 - "Finalize scene [N]" → ContinuityChecker FIRST, then mark_scene_final
 - "What's the status?" → Report current script state
 
@@ -140,6 +145,9 @@ def create_showrunner() -> LlmAgent:
     from agents.composer import create_composer
     composer = create_composer()
 
+    from agents.media_analyzer import create_media_analyzer
+    media_analyzer = create_media_analyzer()
+
     return LlmAgent(
         name="Showrunner",
         model=settings.gemini_main_model,
@@ -157,6 +165,7 @@ def create_showrunner() -> LlmAgent:
             visualizer,
             table_read,
             composer,
+            media_analyzer,
         ],
         tools=[
             get_current_script_state,
