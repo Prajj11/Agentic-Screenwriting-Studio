@@ -1,12 +1,249 @@
 Traceback (most recent call last):
-  File "C:\Users\naren\Music\Agentic-Screenwriting-Studio\backend\main.py", line 300, in _run_agent
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+        (self._dns_host, self.port),
+    ...<2 lines>...
+        socket_options=self.socket_options,
+    )
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\util\connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connectionpool.py", line 488, in _make_request
+    raise new_e
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ~~~~~~~~~~~~~~^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connection.py", line 211, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: HTTPSConnection(host='oauth2.googleapis.com', port=443): Failed to resolve 'oauth2.googleapis.com' ([Errno 11001] getaddrinfo failed)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\requests\adapters.py", line 645, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\urllib3\util\retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Max retries exceeded with url: /token (Caused by NameResolutionError("HTTPSConnection(host='oauth2.googleapis.com', port=443): Failed to resolve 'oauth2.googleapis.com' ([Errno 11001] getaddrinfo failed)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\auth\transport\requests.py", line 188, in __call__
+    response = self.session.request(
+        method, url, data=body, headers=headers, timeout=timeout, **kwargs
+    )
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\requests\sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\requests\sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\requests\adapters.py", line 678, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Max retries exceeded with url: /token (Caused by NameResolutionError("HTTPSConnection(host='oauth2.googleapis.com', port=443): Failed to resolve 'oauth2.googleapis.com' ([Errno 11001] getaddrinfo failed)"))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\prajw\OneDrive\Documents\PCCE stuff\Hackathons\Online Hackathon\Agentic-Screenwriting-Studio\backend\main.py", line 318, in _run_agent
     async for event in runner.run_async(
-  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\runners.py", line 1111, in run_async
+    ...<44 lines>...
+                await broadcast_event(ws_event)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\runners.py", line 1111, in run_async
     async for event in agen:
-  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\runners.py", line 623, in _run_node_async
+      yield event
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\runners.py", line 628, in _run_node_async
+    await self._cleanup_root_task(task, self.agent.name)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\runners.py", line 906, in _cleanup_root_task
+    await task
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\runners.py", line 610, in _drive_root_node
+    raise e.error
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\workflow\_node_runner.py", line 136, in run
+    await self._execute_node(ctx, node_input)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\workflow\_node_runner.py", line 274, in _execute_node
+    await self._run_node_loop(ctx, node_input)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\workflow\_node_runner.py", line 288, in _run_node_loop
     async for event in agen:
-  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\runners.py", line 882, in _consume_event_queue
-    await self.session_service.append_event(
-  File "C:\Users\naren\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\google\adk\sessions\database_session_service.py", line 821, in append_event
-    raise ValueError(_STALE_SESSION_ERROR_MESSAGE)
-ValueError: The session has been modified in storage since it was loaded. Please reload the session before appending more events.
+      self._track_event_in_context(event, ctx)
+      await self._enqueue_event(event, ctx)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\workflow\_base_node.py", line 166, in run
+    async for item in agen:
+    ...<12 lines>...
+        yield Event(output=validated)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\agents\llm_agent.py", line 599, in _run_impl
+    async for event in agen:
+    ...<4 lines>...
+      yield event
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\workflow\_llm_agent_wrapper.py", line 370, in run_llm_agent_as_node
+    async for event in run_iter:
+    ...<22 lines>...
+        break
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\agents\base_agent.py", line 306, in run_async
+    async for event in agen:
+      yield event
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\agents\llm_agent.py", line 548, in _run_async_impl
+    async for event in agen:
+    ...<8 lines>...
+        should_pause = True
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 956, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 1036, in _run_one_step_async
+    async for llm_response in agen:
+    ...<15 lines>...
+          yield event
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 1483, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 1461, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<18 lines>...
+      yield llm_response
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 1544, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 419, in _run_and_handle_error
+    raise model_error
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\flows\llm_flows\base_llm_flow.py", line 396, in _run_and_handle_error
+    async for llm_response in agen:
+      tel_ctx.record_llm_response(invocation_context, llm_response)
+      yield llm_response
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\adk\models\google_llm.py", line 282, in generate_content_async
+    response = await self.api_client.aio.models.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\prajw\OneDrive\Documents\PCCE stuff\Hackathons\Online Hackathon\Agentic-Screenwriting-Studio\backend\main.py", line 69, in _patched_async_generate_content
+    return await _orig_async_generate_content(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prajw\OneDrive\Documents\PCCE stuff\Hackathons\Online Hackathon\Agentic-Screenwriting-Studio\backend\main.py", line 69, in _patched_async_generate_content
+    return await _orig_async_generate_content(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\models.py", line 8788, in generate_content
+    return await self._generate_content(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        model=model, contents=contents, config=final_parsed_config
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\models.py", line 7260, in _generate_content
+    response = await self._api_client.async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'post', path, request_dict, http_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\_api_client.py", line 1754, in async_request
+    result = await self._async_request(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        http_request=http_request, http_options=http_options, stream=False
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\_api_client.py", line 1687, in _async_request
+    return await self._async_retry(  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self._async_request_once, http_request, stream
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\tenacity\asyncio\__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\tenacity\asyncio\__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\tenacity\_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\tenacity\__init__.py", line 413, in exc_check
+    raise retry_exc.reraise()
+          ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\tenacity\__init__.py", line 184, in reraise
+    raise self.last_attempt.result()
+          ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\tenacity\asyncio\__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\_api_client.py", line 1505, in _async_request_once
+    f'Bearer {await self._async_access_token()}'
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\_api_client.py", line 1302, in _async_access_token
+    return await async_get_token_from_credentials(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )  # type: ignore[no-any-return]
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\_api_client.py", line 2335, in async_get_token_from_credentials
+    await asyncio.to_thread(refresh_auth, credentials)
+  File "C:\Python314\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Python314\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\genai\_api_client.py", line 218, in refresh_auth
+    credentials.refresh(Request())  # type: ignore[no-untyped-call]
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\auth\credentials.py", line 517, in refresh
+    self._perform_refresh_token(request)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\oauth2\credentials.py", line 435, in _perform_refresh_token
+    ) = reauth.refresh_grant(
+        ~~~~~~~~~~~~~~~~~~~~^
+        request,
+        ^^^^^^^^
+    ...<6 lines>...
+        enable_reauth_refresh=self._enable_reauth_refresh,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\oauth2\reauth.py", line 337, in refresh_grant
+    ) = _client._token_endpoint_request_no_throw(
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        request, token_uri, body, headers=metrics_header
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\oauth2\_client.py", line 196, in _token_endpoint_request_no_throw
+    response = request(
+        method="POST", url=token_uri, headers=headers_to_use, body=body, **kwargs
+    )
+  File "C:\Users\prajw\AppData\Roaming\Python\Python314\site-packages\google\auth\transport\requests.py", line 195, in __call__
+    raise new_exc from caught_exc
+google.auth.exceptions.TransportError: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Max retries exceeded with url: /token (Caused by NameResolutionError("HTTPSConnection(host='oauth2.googleapis.com', port=443): Failed to resolve 'oauth2.googleapis.com' ([Errno 11001] getaddrinfo failed)"))
