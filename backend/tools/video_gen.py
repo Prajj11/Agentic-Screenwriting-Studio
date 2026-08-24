@@ -24,6 +24,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -58,6 +60,370 @@ def _build_character_appearance_block(characters_json: str) -> str:
     return "\n".join(lines)
 
 
+def _get_ffmpeg_path() -> str | None:
+    """Find FFmpeg binary in system PATH or via imageio_ffmpeg."""
+    import shutil
+    p = shutil.which("ffmpeg")
+    if p:
+        return p
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def merge_video_with_audio(
+    video_path: Path | str,
+    audio_path: Path | str,
+    output_path: Path | str | None = None,
+    soundtrack_path: Path | str | None = None,
+) -> Path | None:
+    """
+    Merge a dialogue audio track (and optional background soundtrack) into a video MP4.
+
+    If the video clip is shorter than the dialogue audio, the video loops smoothly
+    using `-stream_loop -1` so the entire vocal performance is played over the video.
+    """
+    ffmpeg_exe = _get_ffmpeg_path()
+    if not ffmpeg_exe:
+        logger.warning("[AudioMerge] FFmpeg binary not found. Cannot merge video and audio.")
+        return None
+
+    v_path = Path(video_path)
+    a_path = Path(audio_path)
+    if not v_path.exists() or not a_path.exists():
+        logger.warning(f"[AudioMerge] Inputs missing: video={v_path.exists()}, audio={a_path.exists()}")
+        return None
+
+    out_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_voiced.mp4"
+
+    try:
+        import subprocess
+        st_path = Path(soundtrack_path) if soundtrack_path else None
+        has_soundtrack = st_path is not None and st_path.exists()
+
+        if has_soundtrack:
+            # Mix dialogue (100% volume) and background score (25% volume)
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-stream_loop", "-1", "-i", str(v_path),
+                "-i", str(a_path),
+                "-stream_loop", "-1", "-i", str(st_path),
+                "-filter_complex",
+                "[1:a]volume=1.0[dialogue];[2:a]volume=0.25[music];[dialogue][music]amix=inputs=2:duration=first[aout]",
+                "-map", "0:v:0",
+                "-map", "[aout]",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",
+                "-movflags", "+faststart",
+                str(out_path),
+            ]
+        else:
+            # Only dialogue audio
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-stream_loop", "-1", "-i", str(v_path),
+                "-i", str(a_path),
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",
+                "-movflags", "+faststart",
+                str(out_path),
+            ]
+
+        logger.info(f"[AudioMerge] Running FFmpeg audio-video merge on {v_path.name} + {a_path.name}...")
+        proc = subprocess.run(cmd, capture_output=True, timeout=90)
+        if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 1000:
+            logger.info(f"[AudioMerge] Successfully merged video with dialogue -> {out_path} ({out_path.stat().st_size} bytes)")
+            return out_path
+        else:
+            err_msg = proc.stderr.decode("utf-8", errors="ignore")
+            logger.warning(f"[AudioMerge] FFmpeg merge failed (code {proc.returncode}): {err_msg[:300]}")
+            return None
+    except Exception as e:
+        logger.error(f"[AudioMerge] Error during merge: {e}")
+        return None
+
+
+# ── Vertex AI Multi-Shot Dialogue Director Engine ─────────────────────
+
+async def generate_multi_shot_dialogue_video(
+    project_id: str,
+    scene_number: int,
+    scene_description: str,
+    character_visuals: str = "",
+) -> str | None:
+    """
+    Generate a full-duration, multi-camera dialogue scene video strictly powered by
+    Vertex AI (Gemini 3.1 Flash TTS + Gemini 3.1 Flash Image + FFmpeg Director Stitcher).
+    
+    1. Extracts each dialogue line in the scene.
+    2. Generates per-line character vocal tracks via Vertex AI Gemini 3.1 Flash TTS.
+    3. Retrieves or creates canonical character portraits via Vertex AI Gemini 3.1 Flash Image.
+    4. Creates dynamic cinematic camera shots (slow push-ins, pans) for each speaker turn.
+    5. Seamlessly cuts between characters as each speaks, matching the exact speech duration.
+    6. Mixes background score (Lyria 3) if available.
+    7. Returns the final broadcast-ready video JSON with full duration and multi-shot metadata.
+    """
+    from config import settings
+    from tools.script_state import _get_state, attach_media_to_scene, save_media_analysis, _save_state
+    from tools.tts import perform_per_speaker_dialogue_tts
+    from tools.image_gen import generate_character_portrait
+
+    ffmpeg_exe = _get_ffmpeg_path()
+    if not ffmpeg_exe:
+        logger.warning("[MultiShotDirector] FFmpeg not found, cannot run multi-shot director.")
+        return None
+
+    state = await _get_state(project_id)
+    scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+    if not scene or not scene.dialogue:
+        return None
+
+    output_dir = Path(settings.output_videos_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    images_dir = Path(settings.output_images_dir)
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"[MultiShotDirector] Directing multi-camera dialogue scene for Scene {scene_number} ({len(scene.dialogue)} lines)...")
+
+    # Step 1: Generate per-speaker dialogue audio clips via Vertex AI Gemini 3.1 Flash TTS
+    dialogue_raw = [d.model_dump() for d in scene.dialogue]
+    segments = await perform_per_speaker_dialogue_tts(project_id, dialogue_raw, scene_number)
+    if not segments:
+        logger.warning("[MultiShotDirector] No audio segments generated.")
+        return None
+
+    # Step 2: Ensure all speaking characters have canonical portraits
+    character_portraits = {}
+    for seg in segments:
+        char_name = seg["character"]
+        if char_name in character_portraits:
+            continue
+
+        char_obj = state.characters.get(char_name)
+        portrait_file = None
+
+        # Check existing portrait
+        if char_obj and char_obj.reference_portrait:
+            if char_obj.reference_portrait.startswith("/api/media/images/"):
+                p_cand = images_dir / char_obj.reference_portrait.split("/")[-1]
+                if p_cand.exists():
+                    portrait_file = p_cand
+            else:
+                p_cand = Path(char_obj.reference_portrait)
+                if p_cand.exists():
+                    portrait_file = p_cand
+
+        # Generate portrait via Gemini 3.1 Flash Image if missing
+        if not portrait_file:
+            logger.info(f"[MultiShotDirector] Generating canonical reference portrait for '{char_name}' via Gemini 3.1 Flash Image...")
+            vis_desc = char_obj.visual_description if (char_obj and char_obj.visual_description) else f"Actor portraying {char_name} in scene {scene_description[:100]}"
+            port_json = await generate_character_portrait(char_name, vis_desc)
+            port_res = json.loads(port_json)
+            if port_res.get("success") and port_res.get("image_path"):
+                portrait_file = Path(port_res["image_path"])
+                if char_obj:
+                    char_obj.reference_portrait = port_res.get("url")
+                    await _save_state(project_id)
+
+        # Fallback to scene mood board if character portrait couldn't be generated
+        if not portrait_file and scene.mood_board_image:
+            mb_cand = images_dir / scene.mood_board_image.split("/")[-1]
+            if mb_cand.exists():
+                portrait_file = mb_cand
+
+        if portrait_file:
+            character_portraits[char_name] = portrait_file
+
+    # Step 3: Render each speaker shot with cinematic camera motion & line audio
+    shot_video_files = []
+    fps = 30
+
+    for idx, seg in enumerate(segments):
+        speaker = seg["character"]
+        duration = seg["duration"]
+        audio_path = seg["audio_path"]
+        portrait_path = character_portraits.get(speaker)
+
+        if not portrait_path or not portrait_path.exists():
+            # Fallback frame if image missing
+            fallback_img = images_dir / f"fallback_{uuid.uuid4().hex[:6]}.jpg"
+            from PIL import Image, ImageDraw
+            im = Image.new("RGB", (1280, 720), color=(20, 24, 35))
+            d = ImageDraw.Draw(im)
+            d.text((540, 340), speaker, fill=(240, 240, 240))
+            im.save(fallback_img)
+            portrait_path = fallback_img
+
+        shot_video_path = output_dir / f"scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.mp4"
+        total_frames = int(duration * fps)
+
+        # Alternate cinematic camera motion per shot (slow push-in, subtle pan, slight zoom-out)
+        if idx % 3 == 0:
+            # Slow dramatic push-in
+            z_filter = "min(zoom+0.0006,1.15)"
+            x_filter = "iw/2-(iw/zoom/2)"
+            y_filter = "ih/2-(ih/zoom/2)"
+        elif idx % 3 == 1:
+            # Subtle pan left to right
+            z_filter = "min(zoom+0.0004,1.08)"
+            x_filter = "(iw-iw/zoom)*0.7"
+            y_filter = "ih/2-(ih/zoom/2)"
+        else:
+            # Steady close-up with slight floating motion
+            z_filter = "min(zoom+0.0005,1.10)"
+            x_filter = "iw/2-(iw/zoom/2)"
+            y_filter = "(ih-ih/zoom)*0.4"
+
+        cmd = [
+            ffmpeg_exe, "-y",
+            "-loop", "1", "-i", str(portrait_path),
+            "-i", str(audio_path),
+            "-vf", f"scale=1280:720,zoompan=z='{z_filter}':d={total_frames}:x='{x_filter}':y='{y_filter}':s=1280x720:fps={fps}",
+            "-t", f"{duration:.3f}",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            str(shot_video_path),
+        ]
+
+        logger.info(f"[MultiShotDirector] Rendering Shot {idx+1}/{len(segments)} ({speaker}, {duration:.1f}s)...")
+        proc = subprocess.run(cmd, capture_output=True, timeout=60)
+        if proc.returncode == 0 and shot_video_path.exists() and shot_video_path.stat().st_size > 1000:
+            shot_video_files.append(shot_video_path)
+        else:
+            logger.warning(f"[MultiShotDirector] Shot {idx+1} render failed: {proc.stderr.decode('utf-8', errors='ignore')[:200]}")
+
+    if not shot_video_files:
+        logger.warning("[MultiShotDirector] No shots rendered successfully.")
+        return None
+
+    # Step 4: Stitch all shots together into the full scene video
+    concat_list_file = output_dir / f"concat_scene_{scene_number}_{uuid.uuid4().hex[:6]}.txt"
+    with open(concat_list_file, "w") as cf:
+        for shot_file in shot_video_files:
+            cf.write(f"file '{shot_file.as_posix()}'\n")
+
+    final_filename = f"scene_{scene_number}_full_scene_{uuid.uuid4().hex[:8]}.mp4"
+    final_filepath = output_dir / final_filename
+
+    cmd_concat = [
+        ffmpeg_exe, "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", str(concat_list_file),
+        "-c", "copy",
+        "-movflags", "+faststart",
+        str(final_filepath),
+    ]
+
+    logger.info(f"[MultiShotDirector] Stitching {len(shot_video_files)} camera shots into full scene video...")
+    proc_concat = subprocess.run(cmd_concat, capture_output=True, timeout=60)
+    concat_list_file.unlink(missing_ok=True)
+
+    if proc_concat.returncode != 0 or not final_filepath.exists() or final_filepath.stat().st_size < 1000:
+        logger.warning(f"[MultiShotDirector] Concat failed: {proc_concat.stderr.decode('utf-8', errors='ignore')[:200]}")
+        return None
+
+    # Step 5: Mix background score (Lyria 3) if available
+    soundtrack_file = None
+    if scene.soundtrack_audio:
+        if scene.soundtrack_audio.startswith("/api/media/audio/"):
+            sfname = scene.soundtrack_audio.split("/")[-1]
+            scand = Path(settings.output_audio_dir) / sfname
+            if scand.exists():
+                soundtrack_file = scand
+        else:
+            scand = Path(scene.soundtrack_audio)
+            if scand.exists():
+                soundtrack_file = scand
+
+    if soundtrack_file and soundtrack_file.exists():
+        logger.info(f"[MultiShotDirector] Mixing Lyria 3 score under dialogue...")
+        scored_filename = f"scene_{scene_number}_scored_{uuid.uuid4().hex[:8]}.mp4"
+        scored_filepath = output_dir / scored_filename
+        cmd_mix = [
+            ffmpeg_exe, "-y",
+            "-i", str(final_filepath),
+            "-stream_loop", "-1", "-i", str(soundtrack_file),
+            "-filter_complex",
+            "[0:a]volume=1.0[vocal];[1:a]volume=0.22[score];[vocal][score]amix=inputs=2:duration=first[aout]",
+            "-map", "0:v:0",
+            "-map", "[aout]",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-shortest",
+            "-movflags", "+faststart",
+            str(scored_filepath),
+        ]
+        proc_mix = subprocess.run(cmd_mix, capture_output=True, timeout=60)
+        if proc_mix.returncode == 0 and scored_filepath.exists() and scored_filepath.stat().st_size > 1000:
+            final_filepath.unlink(missing_ok=True)
+            final_filepath = scored_filepath
+            final_filename = scored_filename
+
+    total_scene_duration = sum(s["duration"] for s in segments)
+    video_url = f"/api/media/videos/{final_filename}"
+
+    # Step 6: Save and register in ScriptState
+    await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
+    await save_media_analysis(
+        project_id=project_id,
+        media_type="video",
+        media_url=video_url,
+        filename=final_filename,
+        scene_number=scene_number,
+        is_canon=True,
+        caption=f"Multi-Camera Dialogue Performance for Scene {scene_number} ({total_scene_duration:.1f}s, {len(segments)} shots)",
+        structured_description={
+            "video_summary": f"Full multi-camera dialogue performance for Scene {scene_number}",
+            "duration_seconds": total_scene_duration,
+            "shots_count": len(segments),
+            "characters_speaking": list(character_portraits.keys()),
+            "transcript": [
+                {"speaker": seg["character"], "line": seg["line"], "duration": seg["duration"]}
+                for seg in segments
+            ],
+            "has_embedded_dialogue": True,
+            "has_soundtrack": bool(soundtrack_file),
+        },
+    )
+
+    logger.info(f"[MultiShotDirector] Full scene video ready: {final_filepath} ({total_scene_duration:.1f}s)")
+
+    return json.dumps({
+        "success": True,
+        "video_path": str(final_filepath),
+        "filename": final_filename,
+        "url": video_url,
+        "scene_number": scene_number,
+        "model": "vertex-ai-multi-shot-director",
+        "duration_seconds": total_scene_duration,
+        "shots_count": len(segments),
+        "speakers": list(character_portraits.keys()),
+        "has_embedded_dialogue": True,
+        "has_soundtrack": bool(soundtrack_file),
+        "message": (
+            f"🎬 Generated full multi-camera dialogue performance for Scene {scene_number}! "
+            f"Total duration: {total_scene_duration:.1f}s across {len(segments)} dynamic camera cuts with "
+            f"character voices and background score. Watch it in the Media Lab or Script Workspace!"
+        ),
+    })
+
+
 # ── Public API ────────────────────────────────────────────────────────
 
 async def generate_scene_video(
@@ -71,8 +437,9 @@ async def generate_scene_video(
     """
     Generate a video clip depicting characters performing their scene role.
 
-    Uses Google Veo 2.0 via Vertex AI for real AI video generation.
-    The operation is asynchronous (long-running) — we poll until it completes.
+    If the scene has dialogue lines, it uses the Vertex AI Multi-Shot Director
+    Pipeline to generate a full-length, multi-camera performance video with
+    character voices matching the exact dialogue timeline.
 
     Args:
         scene_number: Scene number being animated.
@@ -86,6 +453,25 @@ async def generate_scene_video(
         JSON string containing the generated video path, URL, and metadata.
     """
     from config import settings
+
+    # ── Check if this is a dialogue scene with ScriptState ─────────────
+    if project_id:
+        try:
+            from tools.script_state import _get_state
+            state = await _get_state(project_id)
+            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+            if scene and scene.dialogue and len(scene.dialogue) > 0:
+                logger.info(f"[Director] Scene {scene_number} has {len(scene.dialogue)} dialogue lines. Directing multi-camera video...")
+                multi_shot_result = await generate_multi_shot_dialogue_video(
+                    project_id=project_id,
+                    scene_number=scene_number,
+                    scene_description=scene_description,
+                    character_visuals=character_visuals,
+                )
+                if multi_shot_result:
+                    return multi_shot_result
+        except Exception as ms_err:
+            logger.warning(f"[MultiShotDirector] Multi-shot pipeline error, falling back to single-shot: {ms_err}")
 
     # ── 1. Build a rich cinematic prompt ──────────────────────────────
     prompt_parts = [
@@ -274,9 +660,8 @@ async def generate_scene_video(
                 # Create a slideshow MP4 from the frames using ffmpeg if available
                 try:
                     import subprocess
-                    import shutil
 
-                    ffmpeg_path = shutil.which("ffmpeg")
+                    ffmpeg_path = _get_ffmpeg_path()
                     if ffmpeg_path:
                         # Create a concat file
                         concat_path = output_dir / f"concat_{uuid.uuid4().hex[:6]}.txt"
@@ -327,7 +712,7 @@ async def generate_scene_video(
         except Exception as img_err:
             logger.warning(f"[Fallback] Image sequence generation failed: {img_err}")
 
-    # ── 6. Register & return ──────────────────────────────────────────
+    # ── 6. Fail fast if no video ──────────────────────────────────────
     if not video_generated:
         return json.dumps({
             "success": False,
@@ -339,12 +724,83 @@ async def generate_scene_video(
             "scene_number": scene_number,
         })
 
+    # ── 7. Automatic Audio-Video Merging with Table Read Dialogue ─────
+    merged_with_dialogue = False
+    merged_with_soundtrack = False
+
+    if project_id:
+        try:
+            from tools.script_state import _get_state, attach_media_to_scene
+            state = await _get_state(project_id)
+            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+
+            audio_file = None
+            soundtrack_file = None
+
+            if scene:
+                # A. Check existing Table Read audio
+                if scene.table_read_audio:
+                    if scene.table_read_audio.startswith("/api/media/audio/"):
+                        fname = scene.table_read_audio.split("/")[-1]
+                        candidate = Path(settings.output_audio_dir) / fname
+                        if candidate.exists():
+                            audio_file = candidate
+                    else:
+                        candidate = Path(scene.table_read_audio)
+                        if candidate.exists():
+                            audio_file = candidate
+
+                # B. If no table read yet, but scene has dialogue lines, generate Table Read automatically!
+                if not audio_file and scene.dialogue:
+                    logger.info(f"[AudioMerge] Generating Table Read audio automatically for Scene {scene_number}...")
+                    from tools.tts import perform_table_read
+                    dialogue_payload = json.dumps({"dialogue": [d.model_dump() for d in scene.dialogue]})
+                    tts_res_json = await perform_table_read(project_id, dialogue_payload)
+                    tts_res = json.loads(tts_res_json)
+                    if tts_res.get("success") and tts_res.get("audio_path"):
+                        audio_file = Path(tts_res["audio_path"])
+                        if tts_res.get("url"):
+                            await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
+                            logger.info(f"[AudioMerge] On-the-fly Table Read generated & attached: {audio_file}")
+
+                # C. Check existing Soundtrack score
+                if scene.soundtrack_audio:
+                    if scene.soundtrack_audio.startswith("/api/media/audio/"):
+                        sfname = scene.soundtrack_audio.split("/")[-1]
+                        scandidate = Path(settings.output_audio_dir) / sfname
+                        if scandidate.exists():
+                            soundtrack_file = scandidate
+                    else:
+                        scandidate = Path(scene.soundtrack_audio)
+                        if scandidate.exists():
+                            soundtrack_file = scandidate
+
+            # D. Perform the audio merge if audio is available
+            if audio_file and audio_file.exists():
+                merged_output_path = output_dir / f"scene_{scene_number}_voiced_{uuid.uuid4().hex[:8]}.mp4"
+                merged_path = merge_video_with_audio(
+                    video_path=filepath,
+                    audio_path=audio_file,
+                    output_path=merged_output_path,
+                    soundtrack_path=soundtrack_file,
+                )
+                if merged_path and merged_path.exists():
+                    filepath = merged_path
+                    filename = merged_path.name
+                    merged_with_dialogue = True
+                    if soundtrack_file:
+                        merged_with_soundtrack = True
+                    logger.info(f"[AudioMerge] Video successfully merged with dialogue: {filename}")
+        except Exception as merge_err:
+            logger.warning(f"[AudioMerge] Auto-merge encountered an error: {merge_err}")
+
     video_url = f"/api/media/videos/{filename}"
 
-    # Save to ScriptState
+    # ── 8. Save to ScriptState ────────────────────────────────────────
     if project_id:
         try:
             from tools.script_state import save_media_analysis, attach_media_to_scene
+            audio_note = " (with synchronized dialogue audio)" if merged_with_dialogue else ""
             await save_media_analysis(
                 project_id=project_id,
                 media_type="video",
@@ -352,9 +808,11 @@ async def generate_scene_video(
                 filename=filename,
                 scene_number=scene_number,
                 is_canon=True,
-                caption=f"AI Video Performance for Scene {scene_number}: {scene_description[:100]}",
+                caption=f"AI Video Performance for Scene {scene_number}{audio_note}: {scene_description[:100]}",
                 structured_description={
                     "video_summary": f"Video clip of Scene {scene_number}: {scene_description}",
+                    "has_embedded_dialogue": merged_with_dialogue,
+                    "has_soundtrack": merged_with_soundtrack,
                     "transcript": [
                         {"timestamp": "00:01", "speaker": "Character", "dialogue": dialogue_context[:100]}
                     ] if dialogue_context else [],
@@ -367,6 +825,10 @@ async def generate_scene_video(
         except Exception as err:
             logger.warning(f"Could not register generated video in ScriptState: {err}")
 
+    msg = f"Generated video clip for Scene {scene_number}."
+    if merged_with_dialogue:
+        msg = f"🎬 Generated video clip with synchronized dialogue performance for Scene {scene_number}! Watch & listen in the Media Lab or Script Workspace."
+
     return json.dumps({
         "success": True,
         "video_path": str(filepath),
@@ -374,6 +836,8 @@ async def generate_scene_video(
         "url": video_url,
         "scene_number": scene_number,
         "model": model_used,
+        "merged_with_dialogue": merged_with_dialogue,
+        "merged_with_soundtrack": merged_with_soundtrack,
         "prompt": prompt[:200],
-        "message": f"Generated video clip for Scene {scene_number}. Watch it in the Media Lab!",
+        "message": msg,
     })

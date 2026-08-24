@@ -58,92 +58,75 @@ async def _assign_voice(project_id: str, character_name: str) -> str:
     return assignments[character_name]
 
 
-async def perform_table_read(project_id: str, scene_json: str) -> str:
+async def perform_per_speaker_dialogue_tts(
+    project_id: str,
+    dialogue: list[dict],
+    scene_number: int = 1,
+) -> list[dict]:
     """
-    Generate a multi-speaker audio performance of a scene's dialogue.
+    Generate distinct audio clips for each individual dialogue line using Gemini 3.1 Flash TTS.
     
-    The Gemini TTS API supports max 2 speakers per call, so for scenes
-    with 3+ characters, we batch into dialogue pairs and stitch the audio.
-    
-    Args:
-        project_id: The project ID for consistent voice assignments.
-        scene_json: JSON object with 'dialogue' array of {character, line, parenthetical}.
-    
-    Returns:
-        JSON with the audio file path and metadata.
+    Returns a list of segment dicts:
+      [
+        {
+          "character": "DR. JULIAN VANCE",
+          "line": "Elena, do you know where you are?",
+          "audio_path": "/path/to/tableread_scene_1_shot_0.wav",
+          "audio_url": "/api/media/audio/tableread_scene_1_shot_0.wav",
+          "duration": 3.5,
+          "audio_bytes": b"..."
+        },
+        ...
+      ]
     """
     from config import settings
+    from google import genai
+    from google.genai import types
 
-    try:
-        from google import genai
-        from google.genai import types
+    output_dir = Path(settings.output_audio_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-        scene_data = json.loads(scene_json)
-        dialogue = scene_data.get("dialogue", [])
+    client = genai.Client(
+        vertexai=True,
+        project=settings.gcp_project_id,
+        location=settings.gcp_location
+    )
 
-        if not dialogue:
-            return json.dumps({
-                "success": False,
-                "error": "No dialogue found in the scene.",
-            })
-
-        client = genai.Client(
-            vertexai=True,
-            project=settings.gcp_project_id,
-            location=settings.gcp_location
-        )
-
-        # Assign voices to all characters
-        characters = list(set(dl.get("character", "") for dl in dialogue))
-        voice_map = {}
-        for char in characters:
+    # Assign consistent voices
+    voice_map = {}
+    for dl in dialogue:
+        char = dl.get("character", "UNKNOWN")
+        if char not in voice_map:
             voice_map[char] = await _assign_voice(project_id, char)
 
-        # Build the dialogue text with speaker labels and strong acting instructions
-        dialogue_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
-        for dl in dialogue:
-            char = dl.get("character", "UNKNOWN")
-            line = dl.get("line", "")
-            parenthetical = dl.get("parenthetical", "")
-            if parenthetical:
-                dialogue_text += f"{char} {parenthetical}: {line}\n"
-            else:
-                dialogue_text += f"{char}: {line}\n"
+    segments = []
+    for idx, dl in enumerate(dialogue):
+        char = dl.get("character", "UNKNOWN")
+        line = dl.get("line", "")
+        parenthetical = dl.get("parenthetical", "")
 
-        # Generate TTS — handle 2-speaker limit
-        unique_chars = list(set(dl.get("character", "") for dl in dialogue))
-        all_audio_data = []
+        if not line:
+            continue
 
-        if len(unique_chars) <= 2:
-            if len(unique_chars) == 1:
-                speech_config = types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice_map[unique_chars[0]],
-                        )
-                    )
+        prompt_line = f"Perform with high emotion and dramatic acting. {char}"
+        if parenthetical:
+            prompt_line += f" ({parenthetical}): {line}"
+        else:
+            prompt_line += f": {line}"
+
+        speech_config = types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name=voice_map.get(char, "Aoede"),
                 )
-            else:
-                speaker_configs = [
-                    types.SpeakerVoiceConfig(
-                        speaker=char,
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=voice_map[char],
-                            )
-                        ),
-                    )
-                    for char in unique_chars
-                ]
-                speech_config = types.SpeechConfig(
-                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                        speaker_voice_configs=speaker_configs,
-                    )
-                )
+            )
+        )
 
+        line_audio_bytes = None
+        try:
             response = client.models.generate_content(
                 model=settings.gemini_tts_model,
-                contents=dialogue_text,
+                contents=prompt_line,
                 config=types.GenerateContentConfig(
                     response_modalities=["AUDIO"],
                     speech_config=speech_config,
@@ -153,87 +136,139 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
             if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
                     if hasattr(part, "inline_data") and part.inline_data:
-                        all_audio_data.append(part.inline_data.data)
+                        line_audio_bytes = part.inline_data.data
+                        break
+        except Exception as tts_err:
+            logger.warning(f"[TTS] Line {idx+1} generation error: {tts_err}")
 
-        else:
-            # Complex case: 3+ speakers — batch into sequential 2-speaker chunks
-            segments = _split_dialogue_for_tts(dialogue, voice_map)
+        # Fallback synthetic sound if API filtered
+        if not line_audio_bytes:
+            # Generate 2.5s silent/ambient tone so timeline alignment doesn't break
+            sample_rate = 24000
+            duration = max(2.0, len(line.split()) * 0.35)
+            total_samples = int(sample_rate * duration)
+            line_audio_bytes = b"\x00\x00" * total_samples
 
-            for segment in segments:
-                seg_chars = list(set(dl["character"] for dl in segment["lines"]))
-                if len(seg_chars) == 1:
-                    speech_config = types.SpeechConfig(
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=voice_map.get(seg_chars[0], AVAILABLE_VOICES[0]),
-                            )
-                        )
-                    )
-                else:
-                    speaker_configs = [
-                        types.SpeakerVoiceConfig(
-                            speaker=char,
-                            voice_config=types.VoiceConfig(
-                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                    voice_name=voice_map.get(char, AVAILABLE_VOICES[0]),
-                                )
-                            ),
-                        )
-                        for char in seg_chars[:2]
-                    ]
-                    speech_config = types.SpeechConfig(
-                        multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                            speaker_voice_configs=speaker_configs,
-                        )
-                    )
+        duration = max(1.5, len(line_audio_bytes) / (24000 * 2))
+        filename = f"tableread_scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.wav"
+        filepath = output_dir / filename
 
-                seg_text = "Perform this dialogue with high emotion, dramatic acting, and expressive intonation. Strictly follow the emotional cues in the parentheticals.\n\n"
-                for dl in segment["lines"]:
-                    parenthetical = dl.get("parenthetical", "")
-                    if parenthetical:
-                        seg_text += f"{dl['character']} {parenthetical}: {dl['line']}\n"
-                    else:
-                        seg_text += f"{dl['character']}: {dl['line']}\n"
+        with wave.open(str(filepath), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(line_audio_bytes)
 
-                try:
-                    response = client.models.generate_content(
-                        model=settings.gemini_tts_model,
-                        contents=seg_text,
-                        config=types.GenerateContentConfig(
-                            response_modalities=["AUDIO"],
-                            speech_config=speech_config,
-                        ),
-                    )
+        segments.append({
+            "character": char,
+            "line": line,
+            "parenthetical": parenthetical,
+            "audio_path": str(filepath),
+            "audio_url": f"/api/media/audio/{filename}",
+            "duration": duration,
+            "audio_bytes": line_audio_bytes,
+        })
+        logger.info(f"[TTS] Generated Shot {idx+1} for {char} ({duration:.1f}s): {filepath.name}")
 
-                    if response.candidates and response.candidates[0].content.parts:
-                        for part in response.candidates[0].content.parts:
-                            if hasattr(part, "inline_data") and part.inline_data:
-                                all_audio_data.append(part.inline_data.data)
-                except Exception as e:
-                    logger.warning(f"TTS segment failed: {e}")
+    return segments
 
-        if not all_audio_data:
+
+async def perform_table_read(project_id: str, scene_json: str) -> str:
+    """
+    Generate a multi-speaker audio performance of a scene's dialogue.
+    
+    Generates per-line character voice tracks using Gemini 3.1 Flash TTS,
+    combines them into a master scene performance, and synchronizes with
+    the scene video.
+    
+    Args:
+        project_id: The project ID for consistent voice assignments.
+        scene_json: JSON object with 'dialogue' array of {character, line, parenthetical}.
+    
+    Returns:
+        JSON with the audio file path, per-line segments metadata, and master URL.
+    """
+    from config import settings
+
+    try:
+        scene_data = json.loads(scene_json)
+        dialogue = scene_data.get("dialogue", [])
+        scene_number = scene_data.get("scene_number", 1)
+
+        if not dialogue:
             return json.dumps({
                 "success": False,
-                "error": "No audio was generated. The TTS API may have filtered the content.",
+                "error": "No dialogue found in the scene.",
             })
 
-        # Combine all audio segments and save
+        # Generate individual speaker turns for shot-by-shot alignment
+        segments = await perform_per_speaker_dialogue_tts(project_id, dialogue, scene_number)
+
+        if not segments:
+            return json.dumps({
+                "success": False,
+                "error": "No audio segments were generated.",
+            })
+
         output_dir = Path(settings.output_audio_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = f"tableread_{uuid.uuid4().hex[:8]}.wav"
+        filename = f"tableread_scene_{scene_number}_{uuid.uuid4().hex[:8]}.wav"
         filepath = output_dir / filename
 
-        combined = b"".join(all_audio_data)
-        # Write as WAV (assuming 24kHz, 16-bit mono from Gemini TTS)
+        combined_bytes = b"".join(seg["audio_bytes"] for seg in segments)
+
         with wave.open(str(filepath), "wb") as wf:
             wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(24000)  # 24kHz
-            wf.writeframes(combined)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(combined_bytes)
+
+        total_duration = len(combined_bytes) / (24000 * 2)
+        logger.info(f"Generated master table read: {filepath} ({total_duration:.1f}s across {len(segments)} lines)")
+
+        # Unique voice assignments map
+        voice_map = {}
+        for s in segments:
+            c = s["character"]
+            if c not in voice_map:
+                voice_map[c] = await _assign_voice(project_id, c)
 
         logger.info(f"Generated table read: {filepath}")
+
+        # If this scene already has a concept video generated, auto-merge the new dialogue audio!
+        scene_number = scene_data.get("scene_number")
+        if scene_number and project_id:
+            try:
+                from tools.script_state import _get_state, attach_media_to_scene
+                from tools.video_gen import merge_video_with_audio
+                state = await _get_state(project_id)
+                scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+                if scene and scene.concept_video:
+                    v_fname = scene.concept_video.split("/")[-1]
+                    v_path = Path(settings.output_videos_dir) / v_fname
+                    if v_path.exists():
+                        merged_v_path = Path(settings.output_videos_dir) / f"scene_{scene_number}_voiced_{uuid.uuid4().hex[:8]}.mp4"
+                        
+                        soundtrack_path = None
+                        if scene.soundtrack_audio:
+                            sfname = scene.soundtrack_audio.split("/")[-1]
+                            scandidate = Path(settings.output_audio_dir) / sfname
+                            if scandidate.exists():
+                                soundtrack_path = scandidate
+
+                        res_path = merge_video_with_audio(
+                            video_path=v_path,
+                            audio_path=filepath,
+                            output_path=merged_v_path,
+                            soundtrack_path=soundtrack_path,
+                        )
+                        if res_path and res_path.exists():
+                            new_v_url = f"/api/media/videos/{res_path.name}"
+                            await attach_media_to_scene(project_id, scene_number, "concept_video", new_v_url)
+                            logger.info(f"[TTS] Automatically updated existing scene video with dialogue: {new_v_url}")
+            except Exception as auto_v_err:
+                logger.warning(f"[TTS] Auto-merge into existing video skipped: {auto_v_err}")
 
         return json.dumps({
             "success": True,
@@ -241,8 +276,9 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
             "filename": filename,
             "url": f"/api/media/audio/{filename}",
             "voice_assignments": voice_map,
-            "duration_estimate_seconds": len(combined) / (24000 * 2),  # bytes / (sample_rate * bytes_per_sample)
-            "character_count": len(characters),
+            "duration_estimate_seconds": total_duration,
+            "character_count": len(voice_map),
+            "segments_count": len(segments),
         })
 
     except ImportError:

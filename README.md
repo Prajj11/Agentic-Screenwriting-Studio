@@ -24,7 +24,7 @@ A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a 
 | **Dialogue Specialist** | Drafts full scenes with dialogue | Gemini + Character Bible |
 | **Continuity Checker** | RAG-based consistency verification | ClickHouse Cloud + ChromaDB |
 | **Rights & Clearance** | Legal clearance analysis | Gemini |
-| **Visualizer** | Concept art / mood boards | Gemini 2.5 Flash Image |
+| **Visualizer** | Concept art / mood boards | Gemini 3.1 Flash Image |
 | **Table Read** | Multi-speaker audio performance | Gemini 3.1 Flash TTS |
 | **Composer** | Original cinematic soundtrack generation | Lyria 3 |
 
@@ -49,7 +49,7 @@ A completely redesigned, modular React/Next.js frontend featuring responsive fle
 
 - **Backend**: Python, FastAPI, Google ADK (Agent Development Kit)
 - **Frontend**: Next.js 14, TypeScript, Vanilla CSS
-- **AI Models**: Gemini 2.5 Flash/Pro, Gemini 3.1 Flash TTS, Gemini 2.5 Flash Image, Lyria 3, text-embedding-004
+- **AI Models**: Gemini 2.5 Flash/Pro, Gemini 3.1 Flash TTS, Gemini 3.1 Flash Image, Lyria 3, text-embedding-004
 - **Partner Integrations**: ClickHouse Cloud (Vector DB)
 - **State/Persistence**: SQLite (Persistent App State) + ClickHouse (Vector RAG)
 

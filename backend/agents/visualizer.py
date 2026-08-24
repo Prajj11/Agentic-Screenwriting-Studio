@@ -92,7 +92,7 @@ When you encounter a character that has NEVER had a portrait generated:
 - `save_character_visual`: Lock down a character's appearance or save a reference portrait
 - `generate_character_portrait`: Generate a canonical reference portrait for a character
 - `generate_mood_board`: Generate the scene visualization (pass character_visuals!)
-- `generate_scene_image`: Generate a specific moment illustration (pass character_visuals!)
+- `generate_scene_video`: Generate a cinematic video performance of a scene with characters and automatically synchronized dialogue audio from the Table Read agent! (pass scene_number, scene_description, dialogue_context, character_visuals, project_id)
 - `attach_media_to_scene`: Save the generated image URL to the Script State (REQUIRED)
 """
 
@@ -103,12 +103,12 @@ def create_visualizer() -> LlmAgent:
         name="Visualizer",
         model=settings.gemini_main_model,
         description=(
-            "Visual concept artist. Generates cinematic mood board images and scene "
-            "illustrations using Gemini image generation. Creates atmosphere/setting "
-            "visualizations and dramatic moment captures so the team can verify tone "
-            "visually. Enforces character visual consistency across scenes by using "
-            "locked-down appearance descriptions, reference portraits, and analyzed reference media. "
-            "Use after a scene is drafted to see its visual identity."
+            "Visual concept artist and scene videographer. Generates cinematic mood board images, "
+            "canonical character portraits, and full multi-camera dialogue video performances "
+            "(strictly using Vertex AI Gemini TTS, Gemini Image, and Veo Director with per-speaker camera cuts) "
+            "that match the exact dialogue duration. "
+            "Enforces character visual consistency across scenes by using locked-down appearance descriptions, "
+            "reference portraits, and analyzed reference media. Use to visualize tone, characters, and scenes."
         ),
         instruction=VISUALIZER_INSTRUCTION,
         tools=[

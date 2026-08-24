@@ -167,6 +167,7 @@ async def generate_character_portrait(
         prompt,
         prefix=f"portrait_{character_name.lower().replace(' ', '_')}",
         settings=settings,
+        aspect_ratio="1:1",
     )
 
 
@@ -287,6 +288,7 @@ async def _generate_image_with_gemini(
     prefix: str,
     settings,
     reference_images: list | None = None,
+    aspect_ratio: str = "16:9",
 ) -> str:
     """
     Core image generation using Gemini's generate_content with response_modalities=["IMAGE"].
@@ -304,9 +306,14 @@ async def _generate_image_with_gemini(
         reference_images: Optional list of (name, bytes) tuples — reference portrait
             images that are sent as multimodal context so the model can "see"
             what characters look like and reproduce their appearance.
+        aspect_ratio: Aspect ratio for the output image ("16:9", "1:1", "4:3", "3:4", "9:16").
     """
     # Determine which model to use — prefer the configured one, fall back to known-good
-    image_model = getattr(settings, "gemini_image_gen_model", None) or "gemini-2.5-flash-image"
+    image_model = (
+        getattr(settings, "gemini_image_model", None)
+        or getattr(settings, "gemini_image_gen_model", None)
+        or "gemini-2.5-flash-image"
+    )
 
     try:
         from google import genai
@@ -350,7 +357,7 @@ async def _generate_image_with_gemini(
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
                 image_config=types.ImageConfig(
-                    aspect_ratio="16:9",
+                    aspect_ratio=aspect_ratio,
                 ),
                 safety_settings=[
                     types.SafetySetting(
@@ -421,8 +428,9 @@ async def _generate_image_with_gemini(
         import urllib.parse
 
         try:
+            width, height = (1024, 1024) if aspect_ratio == "1:1" else (1280, 720)
             safe_prompt = urllib.parse.quote(prompt[:500])
-            image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1280&height=720&nologo=true"
+            image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width={width}&height={height}&nologo=true"
 
             output_dir = Path(settings.output_images_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
