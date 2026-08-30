@@ -1,5 +1,4 @@
 @echo off
-setlocal enabledelayedexpansion
 title Agentic Screenwriting Studio Launcher
 
 echo ===================================================
@@ -21,14 +20,18 @@ if not exist "%~dp0backend\.env" (
 :: 2. Determine Python activation command
 set "ACTIVATE_CMD="
 if exist "%~dp0.venv\Scripts\activate.bat" (
-    set "ACTIVATE_CMD=call "%~dp0.venv\Scripts\activate.bat" ^&^& "
+    set "ACTIVATE_CMD=call "%~dp0.venv\Scripts\activate.bat" && "
     echo [V] Virtual environment found (.venv)
-) else if exist "%~dp0venv\Scripts\activate.bat" (
-    set "ACTIVATE_CMD=call "%~dp0venv\Scripts\activate.bat" ^&^& "
-    echo [V] Virtual environment found (venv)
-) else if exist "%~dp0backend\.venv\Scripts\activate.bat" (
-    set "ACTIVATE_CMD=call "%~dp0backend\.venv\Scripts\activate.bat" ^&^& "
-    echo [V] Virtual environment found (backend\.venv)
+) else (
+    if exist "%~dp0venv\Scripts\activate.bat" (
+        set "ACTIVATE_CMD=call "%~dp0venv\Scripts\activate.bat" && "
+        echo [V] Virtual environment found (venv)
+    ) else (
+        if exist "%~dp0backend\.venv\Scripts\activate.bat" (
+            set "ACTIVATE_CMD=call "%~dp0backend\.venv\Scripts\activate.bat" && "
+            echo [V] Virtual environment found (backend\.venv)
+        )
+    )
 )
 
 :: 3. Check frontend node_modules
@@ -41,7 +44,7 @@ if not exist "%~dp0frontend\node_modules" (
 
 echo.
 echo Starting FastAPI Backend on port 8000...
-start "Backend - FastAPI" cmd /k "cd /d "%~dp0backend" && !ACTIVATE_CMD!python main.py"
+start "Backend - FastAPI" cmd /k "cd /d "%~dp0backend" && %ACTIVATE_CMD%python main.py"
 
 echo Starting Next.js Frontend on port 3000...
 start "Frontend - Next.js" cmd /k "cd /d "%~dp0frontend" && npm run dev"
