@@ -63,7 +63,7 @@ error_trace.txt
 test_key.py
 notebook_*.py
 notebook_*.md
-Agentic-Screenwriting-Studio/
+Agentic-Screenwriting-Studio*/
 
 data/
 *.db
@@ -80,3 +80,7 @@ backend/check_scenes.py
 backend/inspect_session.py
 backend/inspect_session_events.py
 backend/_inspect_adk.py
+
+# IDE
+.freebuff/
+
