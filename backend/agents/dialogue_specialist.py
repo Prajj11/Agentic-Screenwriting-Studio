@@ -33,7 +33,7 @@ lines, and character-specific voice.
 Follow proper industry screenplay formatting:
 - **SLUGLINE**: INT./EXT. LOCATION - TIME (e.g., "INT. DETECTIVE'S OFFICE - NIGHT")
 - **Action lines**: Present tense, vivid, cinematic. Describe what we SEE and HEAR.
-- **Character name**: CENTERED, ALL CAPS when speaking
+- **Character name**: **NAME** in ALL CAPS (bold markdown, e.g. **MARK**)
 - **Parentheticals**: (softly), (beat), (to Sarah) — use sparingly
 - **Dialogue**: Natural, character-specific speech patterns
 

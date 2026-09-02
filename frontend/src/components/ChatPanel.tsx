@@ -52,7 +52,7 @@ export function ChatPanel({ messages, isLoading, onSend, onSelectTab }: ChatPane
               {msg.role === 'agent' ? (
                 <div className="markdown-body" style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--text-primary)' }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {msg.text}
+                    {msg.text.replace(/<\/?center>/gi, '**')}
                   </ReactMarkdown>
 
                   {/* Compact Video Media Badge */}

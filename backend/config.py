@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004")
     lyria_music_model: str = os.getenv("LYRIA_MUSIC_MODEL", "lyria-3-pro-preview")
     lyria_music_clip_model: str = os.getenv("LYRIA_MUSIC_CLIP_MODEL", "lyria-3-clip-preview")
-    veo_video_model: str = os.getenv("VEO_VIDEO_MODEL", "veo-3.1-generate-001")
+    veo_video_model: str = os.getenv("VEO_VIDEO_MODEL", "veo-2.0-generate-001")
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"

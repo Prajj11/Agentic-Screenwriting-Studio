@@ -61,9 +61,14 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
         >
           {/* Scene Experience (Video + Image + Audio) */}
           {(() => {
-            const videoItem = scene.concept_video || scriptState.media_analyses?.find((m: MediaAnalysis) => m.scene_number === scene.scene_number && m.media_type === 'video')?.media_url;
+            const videoAnalysis = scriptState.media_analyses?.find((m: MediaAnalysis) => m.scene_number === scene.scene_number && m.media_type === 'video');
+            const videoItem = scene.concept_video || videoAnalysis?.media_url;
             const hasMedia = videoItem || scene.mood_board_image || scene.table_read_audio || scene.soundtrack_audio;
             if (scene.scene_number !== currentScene?.scene_number || !hasMedia) return null;
+
+            const isVeo = videoAnalysis?.structured_description?.video_mode === 'veo-2.0' || videoAnalysis?.caption?.includes('Veo');
+            const shotsCount = videoAnalysis?.structured_description?.shots_count;
+            const durationSec = videoAnalysis?.structured_description?.duration_seconds;
 
             return (
               <div className="scene-experience" style={{ marginBottom: 'var(--space-xl)', background: 'var(--bg-tertiary)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
@@ -71,7 +76,27 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
                 
                 {videoItem && (
                   <div className="scene-media-video" style={{ marginBottom: 'var(--space-md)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🎥 Video Performance</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                        🎥 Video Performance
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {isVeo ? (
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(52, 168, 83, 0.2)', color: '#34a853', fontWeight: 600, border: '1px solid rgba(52, 168, 83, 0.3)' }}>
+                            🎬 Google Veo 2.0
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 166, 35, 0.2)', color: '#f5a623', fontWeight: 600, border: '1px solid rgba(245, 166, 35, 0.3)' }}>
+                            ⚡ Dynamic Animatic {shotsCount ? `(${shotsCount} cuts)` : ''}
+                          </span>
+                        )}
+                        {durationSec && (
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--surface-sunken)', color: 'var(--text-tertiary)' }}>
+                            ⏱️ {durationSec.toFixed(1)}s
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <video
                       controls
                       src={videoItem.startsWith('http') ? videoItem : `http://localhost:8000${videoItem}`}
@@ -205,6 +230,8 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
                       <button className="sidebar__btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={(e) => { e.stopPropagation(); onAction(`Perform a Table Read for Scene ${scene.scene_number}`); }}>🎙️ Table Read</button>
                       <button className="sidebar__btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={(e) => { e.stopPropagation(); onAction(`Visualize Scene ${scene.scene_number}`); }}>🎨 Visualize</button>
                       <button className="sidebar__btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={(e) => { e.stopPropagation(); onAction(`Generate soundtrack for Scene ${scene.scene_number}`); }}>🎵 Soundtrack</button>
+                      <button className="sidebar__btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto', color: 'var(--accent-primary)' }} onClick={(e) => { e.stopPropagation(); onAction(`Generate dynamic multi-shot animatic video for Scene ${scene.scene_number}`); }}>⚡ Animatic</button>
+                      <button className="sidebar__btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto', color: '#34a853' }} onClick={(e) => { e.stopPropagation(); onAction(`Generate cinematic Veo video for Scene ${scene.scene_number}`); }}>🎬 Veo 2.0</button>
                     </>
                   )}
                   <button className="sidebar__btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={(e) => { e.stopPropagation(); onAction(`Edit Scene ${scene.scene_number}`); }}>✏️ Edit</button>

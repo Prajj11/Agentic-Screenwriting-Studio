@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      extend: path.resolve(process.cwd(), "node_modules/extend/index.js"),
+    };
+    return config;
+  },
   async rewrites() {
     return [
       {
@@ -12,3 +20,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

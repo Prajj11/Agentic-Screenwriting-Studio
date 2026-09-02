@@ -1,22 +1,14 @@
 """
-Veo Video Generation tool for the Visualizer agent.
+Video Generation Engine for the Visualizer agent.
 
-Generates real video clips of characters performing their roles for screenplay
-scenes using Google Veo 2.0 via Vertex AI.
-
-Pipeline:
-  1. Build a rich cinematic prompt from the scene description, dialogue,
-     and character appearance sheet (same system as image_gen.py).
-  2. Call `client.models.generate_videos` with the Veo model.
-  3. Poll the long-running operation until it completes (up to ~4 minutes).
-  4. Download the video bytes and save as MP4.
-  5. Register the video in ScriptState for display in the Media Lab.
-
-CHARACTER VISUAL CONSISTENCY
-─────────────────────────────
-Reuses `_build_character_appearance_block` from image_gen to inject the
-Character Bible's visual descriptions into the video prompt, ensuring
-the characters' look is consistent with all other generated media.
+Supports dual-mode high-fidelity video production:
+  1. Google Veo 2.0 Generative Video (Vertex AI): Real 24fps fluid AI cinematic video
+     with character acting, physical movement, and camera physics, merged with Gemini TTS
+     dialogue vocals and Lyria 3 score.
+  2. Dynamic Multi-Shot Animatic Engine V2: Advanced multi-camera motion storyboard
+     featuring emotion-aware shot generation, dynamic camera physics (tracking, pans,
+     handheld drift), cinematic post-FX (film grain, vignette, color grade), and
+     burnt-in lower-third speaker subtitles.
 """
 
 from __future__ import annotations
@@ -24,11 +16,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +56,6 @@ def _build_character_appearance_block(characters_json: str) -> str:
 
 def _get_ffmpeg_path() -> str | None:
     """Find FFmpeg binary in system PATH or via imageio_ffmpeg."""
-    import shutil
     p = shutil.which("ffmpeg")
     if p:
         return p
@@ -71,6 +64,18 @@ def _get_ffmpeg_path() -> str | None:
         return imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
         return None
+
+
+def _escape_drawtext(text: str, max_length: int = 80) -> str:
+    """Sanitize and escape text string for FFmpeg drawtext filter."""
+    if not text:
+        return ""
+    clean = text.strip()
+    clean = clean.replace("\\", "\\\\").replace("'", "\u2019").replace(":", "\\:").replace("%", "\\%")
+    clean = clean.replace("\n", " ").replace("\r", "")
+    if len(clean) > max_length:
+        clean = clean[:max_length - 3] + "..."
+    return clean
 
 
 def merge_video_with_audio(
@@ -99,19 +104,18 @@ def merge_video_with_audio(
     out_path = Path(output_path) if output_path else v_path.parent / f"{v_path.stem}_voiced.mp4"
 
     try:
-        import subprocess
         st_path = Path(soundtrack_path) if soundtrack_path else None
         has_soundtrack = st_path is not None and st_path.exists()
 
         if has_soundtrack:
-            # Mix dialogue (100% volume) and background score (25% volume)
+            # Mix dialogue (100% volume) and background score (22% volume)
             cmd = [
                 ffmpeg_exe, "-y",
                 "-stream_loop", "-1", "-i", str(v_path),
                 "-i", str(a_path),
                 "-stream_loop", "-1", "-i", str(st_path),
                 "-filter_complex",
-                "[1:a]volume=1.0[dialogue];[2:a]volume=0.25[music];[dialogue][music]amix=inputs=2:duration=first[aout]",
+                "[1:a]volume=1.0[dialogue];[2:a]volume=0.22[music];[dialogue][music]amix=inputs=2:duration=first[aout]",
                 "-map", "0:v:0",
                 "-map", "[aout]",
                 "-c:v", "libx264",
@@ -155,7 +159,107 @@ def merge_video_with_audio(
         return None
 
 
-# ── Vertex AI Multi-Shot Dialogue Director Engine ─────────────────────
+# ── Render Dynamic Animatic Shot ──────────────────────────────────────
+
+def _render_dynamic_animatic_shot(
+    portrait_path: Path | None,
+    audio_path: Path,
+    speaker: str,
+    dialogue_line: str,
+    duration: float,
+    idx: int,
+    output_path: Path,
+    ffmpeg_exe: str,
+    fps: int = 30,
+) -> bool:
+    """
+    Renders an individual shot with dynamic camera physics, color grade,
+    vignette, film grain, and burnt-in lower-third cinematic speaker subtitle.
+    """
+    total_frames = max(1, int(duration * fps))
+
+    # 6 distinct cinematic camera movements
+    motion_type = idx % 6
+    if motion_type == 0:
+        # Dramatic push-in towards character's eyes
+        z_filter = "min(zoom+0.0018,1.25)"
+        x_filter = "iw/2-(iw/zoom/2)"
+        y_filter = "ih*0.35-(ih/zoom*0.35)"
+    elif motion_type == 1:
+        # Reveal pull-back from close-up to medium shot
+        z_filter = f"if(lte(zoom,1.0),1.22,max(1.001,zoom-0.0014))"
+        x_filter = "iw/2-(iw/zoom/2)"
+        y_filter = "ih/2-(ih/zoom/2)"
+    elif motion_type == 2:
+        # Cinematic tracking pan from Left to Right
+        z_filter = "1.16"
+        x_filter = f"(iw-iw/zoom)*(on/{total_frames})"
+        y_filter = "ih/2-(ih/zoom/2)"
+    elif motion_type == 3:
+        # Cinematic tracking pan from Right to Left with subtle zoom
+        z_filter = "min(zoom+0.0012,1.20)"
+        x_filter = f"(iw-iw/zoom)*(1-on/{total_frames})"
+        y_filter = "ih*0.4-(ih/zoom*0.4)"
+    elif motion_type == 4:
+        # Handheld camera drift / subtle organic float
+        z_filter = "1.12+0.025*sin(2*PI*on/60)"
+        x_filter = "iw/2-(iw/zoom/2)+12*sin(2*PI*on/90)"
+        y_filter = "ih/2-(ih/zoom/2)+8*cos(2*PI*on/75)"
+    else:
+        # Dramatic close-up Dutch angle push
+        z_filter = "min(zoom+0.0022,1.28)"
+        x_filter = "iw*0.55-(iw/zoom*0.55)"
+        y_filter = "ih*0.35-(ih/zoom*0.35)"
+
+    esc_speaker = _escape_drawtext(speaker.upper(), max_length=30)
+    esc_line = _escape_drawtext(dialogue_line, max_length=85)
+
+    # Build video filter chain:
+    # 1. Scale & dynamic camera motion
+    # 2. Cinematic contrast / grading & vignette
+    # 3. Lower-third dark gradient box
+    # 4. Gold/Amber speaker name badge
+    # 5. Clean white dialogue text subtitle
+    vf_parts = [
+        "scale=1280:720",
+        f"zoompan=z='{z_filter}':d={total_frames}:x='{x_filter}':y='{y_filter}':s=1280x720:fps={fps}",
+        "eq=contrast=1.06:brightness=0.01:saturation=1.10",
+        "vignette=PI/4",
+        "drawbox=y=ih-115:color=black@0.78:width=iw:height=115:t=fill",
+        f"drawtext=text='{esc_speaker}':fontcolor=0xF5A623:fontsize=22:x=60:y=h-98",
+        f"drawtext=text='{esc_line}':fontcolor=0xFFFFFF:fontsize=20:x=60:y=h-58",
+    ]
+    vf_string = ",".join(vf_parts)
+
+    try:
+        if portrait_path and portrait_path.exists():
+            input_args = ["-loop", "1", "-i", str(portrait_path)]
+        else:
+            # Fallback color source if portrait missing
+            input_args = ["-f", "lavfi", "-i", f"color=c=0x1E2332:s=1280x720:d={duration:.3f}"]
+
+        cmd = [
+            ffmpeg_exe, "-y",
+            *input_args,
+            "-i", str(audio_path),
+            "-vf", vf_string,
+            "-t", f"{duration:.3f}",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            str(output_path),
+        ]
+
+        proc = subprocess.run(cmd, capture_output=True, timeout=60)
+        return proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000
+    except Exception as err:
+        logger.warning(f"[AnimaticDirector] Error rendering shot {idx+1}: {err}")
+        return False
+
+
+# ── Vertex AI Multi-Shot Dialogue Director Engine V2 ──────────────────
 
 async def generate_multi_shot_dialogue_video(
     project_id: str,
@@ -164,16 +268,9 @@ async def generate_multi_shot_dialogue_video(
     character_visuals: str = "",
 ) -> str | None:
     """
-    Generate a full-duration, multi-camera dialogue scene video strictly powered by
-    Vertex AI (Gemini 3.1 Flash TTS + Gemini 3.1 Flash Image + FFmpeg Director Stitcher).
-    
-    1. Extracts each dialogue line in the scene.
-    2. Generates per-line character vocal tracks via Vertex AI Gemini 3.1 Flash TTS.
-    3. Retrieves or creates canonical character portraits via Vertex AI Gemini 3.1 Flash Image.
-    4. Creates dynamic cinematic camera shots (slow push-ins, pans) for each speaker turn.
-    5. Seamlessly cuts between characters as each speaks, matching the exact speech duration.
-    6. Mixes background score (Lyria 3) if available.
-    7. Returns the final broadcast-ready video JSON with full duration and multi-shot metadata.
+    Generate a full-duration, dynamic multi-camera dialogue scene animatic
+    powered by Vertex AI (Gemini 3.1 Flash TTS + Gemini 3.1 Flash Image +
+    Dynamic FFmpeg Camera Physics & Burnt-In Subtitles).
     """
     from config import settings
     from tools.script_state import _get_state, attach_media_to_scene, save_media_analysis, _save_state
@@ -195,7 +292,7 @@ async def generate_multi_shot_dialogue_video(
     images_dir = Path(settings.output_images_dir)
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"[MultiShotDirector] Directing multi-camera dialogue scene for Scene {scene_number} ({len(scene.dialogue)} lines)...")
+    logger.info(f"[MultiShotDirector] Directing dynamic multi-camera scene for Scene {scene_number} ({len(scene.dialogue)} lines)...")
 
     # Step 1: Generate per-speaker dialogue audio clips via Vertex AI Gemini 3.1 Flash TTS
     dialogue_raw = [d.model_dump() for d in scene.dialogue]
@@ -225,9 +322,9 @@ async def generate_multi_shot_dialogue_video(
                 if p_cand.exists():
                     portrait_file = p_cand
 
-        # Generate portrait via Gemini 3.1 Flash Image if missing
+        # Generate portrait via Gemini Image if missing
         if not portrait_file:
-            logger.info(f"[MultiShotDirector] Generating canonical reference portrait for '{char_name}' via Gemini 3.1 Flash Image...")
+            logger.info(f"[MultiShotDirector] Generating canonical reference portrait for '{char_name}'...")
             vis_desc = char_obj.visual_description if (char_obj and char_obj.visual_description) else f"Actor portraying {char_name} in scene {scene_description[:100]}"
             port_json = await generate_character_portrait(char_name, vis_desc)
             port_res = json.loads(port_json)
@@ -246,66 +343,36 @@ async def generate_multi_shot_dialogue_video(
         if portrait_file:
             character_portraits[char_name] = portrait_file
 
-    # Step 3: Render each speaker shot with cinematic camera motion & line audio
+    # Step 3: Render each speaker shot with dynamic camera motion, subtitles & audio
     shot_video_files = []
     fps = 30
 
     for idx, seg in enumerate(segments):
         speaker = seg["character"]
+        dialogue_line = seg.get("line", "")
         duration = seg["duration"]
-        audio_path = seg["audio_path"]
+        audio_path = Path(seg["audio_path"])
         portrait_path = character_portraits.get(speaker)
 
-        if not portrait_path or not portrait_path.exists():
-            # Fallback frame if image missing
-            fallback_img = images_dir / f"fallback_{uuid.uuid4().hex[:6]}.jpg"
-            from PIL import Image, ImageDraw
-            im = Image.new("RGB", (1280, 720), color=(20, 24, 35))
-            d = ImageDraw.Draw(im)
-            d.text((540, 340), speaker, fill=(240, 240, 240))
-            im.save(fallback_img)
-            portrait_path = fallback_img
-
         shot_video_path = output_dir / f"scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.mp4"
-        total_frames = int(duration * fps)
-
-        # Alternate cinematic camera motion per shot (slow push-in, subtle pan, slight zoom-out)
-        if idx % 3 == 0:
-            # Slow dramatic push-in
-            z_filter = "min(zoom+0.0006,1.15)"
-            x_filter = "iw/2-(iw/zoom/2)"
-            y_filter = "ih/2-(ih/zoom/2)"
-        elif idx % 3 == 1:
-            # Subtle pan left to right
-            z_filter = "min(zoom+0.0004,1.08)"
-            x_filter = "(iw-iw/zoom)*0.7"
-            y_filter = "ih/2-(ih/zoom/2)"
-        else:
-            # Steady close-up with slight floating motion
-            z_filter = "min(zoom+0.0005,1.10)"
-            x_filter = "iw/2-(iw/zoom/2)"
-            y_filter = "(ih-ih/zoom)*0.4"
-
-        cmd = [
-            ffmpeg_exe, "-y",
-            "-loop", "1", "-i", str(portrait_path),
-            "-i", str(audio_path),
-            "-vf", f"scale=1280:720,zoompan=z='{z_filter}':d={total_frames}:x='{x_filter}':y='{y_filter}':s=1280x720:fps={fps}",
-            "-t", f"{duration:.3f}",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            str(shot_video_path),
-        ]
-
         logger.info(f"[MultiShotDirector] Rendering Shot {idx+1}/{len(segments)} ({speaker}, {duration:.1f}s)...")
-        proc = subprocess.run(cmd, capture_output=True, timeout=60)
-        if proc.returncode == 0 and shot_video_path.exists() and shot_video_path.stat().st_size > 1000:
+
+        ok = _render_dynamic_animatic_shot(
+            portrait_path=portrait_path,
+            audio_path=audio_path,
+            speaker=speaker,
+            dialogue_line=dialogue_line,
+            duration=duration,
+            idx=idx,
+            output_path=shot_video_path,
+            ffmpeg_exe=ffmpeg_exe,
+            fps=fps,
+        )
+
+        if ok and shot_video_path.exists() and shot_video_path.stat().st_size > 1000:
             shot_video_files.append(shot_video_path)
         else:
-            logger.warning(f"[MultiShotDirector] Shot {idx+1} render failed: {proc.stderr.decode('utf-8', errors='ignore')[:200]}")
+            logger.warning(f"[MultiShotDirector] Shot {idx+1} render failed")
 
     if not shot_video_files:
         logger.warning("[MultiShotDirector] No shots rendered successfully.")
@@ -313,7 +380,7 @@ async def generate_multi_shot_dialogue_video(
 
     # Step 4: Stitch all shots together into the full scene video
     concat_list_file = output_dir / f"concat_scene_{scene_number}_{uuid.uuid4().hex[:6]}.txt"
-    with open(concat_list_file, "w") as cf:
+    with open(concat_list_file, "w", encoding="utf-8") as cf:
         for shot_file in shot_video_files:
             cf.write(f"file '{shot_file.as_posix()}'\n")
 
@@ -351,7 +418,7 @@ async def generate_multi_shot_dialogue_video(
                 soundtrack_file = scand
 
     if soundtrack_file and soundtrack_file.exists():
-        logger.info(f"[MultiShotDirector] Mixing Lyria 3 score under dialogue...")
+        logger.info("[MultiShotDirector] Mixing Lyria 3 score under dialogue...")
         scored_filename = f"scene_{scene_number}_scored_{uuid.uuid4().hex[:8]}.mp4"
         scored_filepath = output_dir / scored_filename
         cmd_mix = [
@@ -387,9 +454,9 @@ async def generate_multi_shot_dialogue_video(
         filename=final_filename,
         scene_number=scene_number,
         is_canon=True,
-        caption=f"Multi-Camera Dialogue Performance for Scene {scene_number} ({total_scene_duration:.1f}s, {len(segments)} shots)",
+        caption=f"Dynamic Multi-Camera Dialogue Performance for Scene {scene_number} ({total_scene_duration:.1f}s, {len(segments)} dynamic cuts)",
         structured_description={
-            "video_summary": f"Full multi-camera dialogue performance for Scene {scene_number}",
+            "video_summary": f"Full dynamic multi-camera dialogue performance for Scene {scene_number}",
             "duration_seconds": total_scene_duration,
             "shots_count": len(segments),
             "characters_speaking": list(character_portraits.keys()),
@@ -399,10 +466,11 @@ async def generate_multi_shot_dialogue_video(
             ],
             "has_embedded_dialogue": True,
             "has_soundtrack": bool(soundtrack_file),
+            "video_mode": "dynamic-multishot-animatic-v2",
         },
     )
 
-    logger.info(f"[MultiShotDirector] Full scene video ready: {final_filepath} ({total_scene_duration:.1f}s)")
+    logger.info(f"[MultiShotDirector] Dynamic scene video ready: {final_filepath} ({total_scene_duration:.1f}s)")
 
     return json.dumps({
         "success": True,
@@ -410,76 +478,49 @@ async def generate_multi_shot_dialogue_video(
         "filename": final_filename,
         "url": video_url,
         "scene_number": scene_number,
-        "model": "vertex-ai-multi-shot-director",
+        "model": "dynamic-multishot-animatic-v2",
+        "video_mode": "animatic",
         "duration_seconds": total_scene_duration,
         "shots_count": len(segments),
         "speakers": list(character_portraits.keys()),
         "has_embedded_dialogue": True,
         "has_soundtrack": bool(soundtrack_file),
         "message": (
-            f"🎬 Generated full multi-camera dialogue performance for Scene {scene_number}! "
+            f"🎬 Generated Dynamic Multi-Shot Animatic for Scene {scene_number}! "
             f"Total duration: {total_scene_duration:.1f}s across {len(segments)} dynamic camera cuts with "
-            f"character voices and background score. Watch it in the Media Lab or Script Workspace!"
+            f"cinematic camera physics, speaker subtitles, character voices, and background score."
         ),
     })
 
 
-# ── Public API ────────────────────────────────────────────────────────
+# ── Google Veo 2.0 Generative Video Engine (Vertex AI) ────────────────
 
-async def generate_scene_video(
-    scene_number: int = 1,
-    scene_description: str = "Screenplay scene performance",
+async def generate_veo_scene_video(
+    scene_number: int,
+    scene_description: str,
     dialogue_context: str = "",
-    characters: str = "",
     character_visuals: str = "",
+    characters: str = "",
     project_id: str = "",
-) -> str:
+) -> tuple[bool, Path | None, str]:
     """
-    Generate a video clip depicting characters performing their scene role.
-
-    If the scene has dialogue lines, it uses the Vertex AI Multi-Shot Director
-    Pipeline to generate a full-length, multi-camera performance video with
-    character voices matching the exact dialogue timeline.
-
-    Args:
-        scene_number: Scene number being animated.
-        scene_description: Detailed visual action lines and environment.
-        dialogue_context: Spoken dialogue lines to be performed.
-        characters: Character names and descriptions (legacy fallback).
-        character_visuals: Character appearance spec JSON string (preferred).
-        project_id: Project identifier for ScriptState registration.
-
-    Returns:
-        JSON string containing the generated video path, URL, and metadata.
+    Generate real 24fps fluid cinematic video using Google Veo 2.0 via Vertex AI.
+    Returns (success, filepath, error_or_model_name).
     """
     from config import settings
 
-    # ── Check if this is a dialogue scene with ScriptState ─────────────
-    if project_id:
-        try:
-            from tools.script_state import _get_state
-            state = await _get_state(project_id)
-            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
-            if scene and scene.dialogue and len(scene.dialogue) > 0:
-                logger.info(f"[Director] Scene {scene_number} has {len(scene.dialogue)} dialogue lines. Directing multi-camera video...")
-                multi_shot_result = await generate_multi_shot_dialogue_video(
-                    project_id=project_id,
-                    scene_number=scene_number,
-                    scene_description=scene_description,
-                    character_visuals=character_visuals,
-                )
-                if multi_shot_result:
-                    return multi_shot_result
-        except Exception as ms_err:
-            logger.warning(f"[MultiShotDirector] Multi-shot pipeline error, falling back to single-shot: {ms_err}")
+    output_dir = Path(settings.output_videos_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"scene_{scene_number}_veo_{uuid.uuid4().hex[:8]}.mp4"
+    filepath = output_dir / filename
+    model_used = settings.veo_video_model
 
-    # ── 1. Build a rich cinematic prompt ──────────────────────────────
+    # Build prompt
     prompt_parts = [
-        f"Cinematic video clip for Scene {scene_number} of a screenplay.",
+        f"Cinematic photorealistic movie scene performance for Scene {scene_number}.",
         f"Setting & Action: {scene_description}",
     ]
 
-    # Inject character appearance sheet for visual consistency
     appearance_block = _build_character_appearance_block(character_visuals)
     if appearance_block:
         prompt_parts.append(appearance_block)
@@ -487,26 +528,15 @@ async def generate_scene_video(
         prompt_parts.append(f"Characters: {characters}")
 
     if dialogue_context:
-        prompt_parts.append(f"Dialogue & Performance: {dialogue_context}")
+        prompt_parts.append(f"Performance & Acting: Characters speaking and emotionally reacting to the scene: {dialogue_context}")
 
     prompt_parts.append(
-        "Style: photorealistic cinematic film clip, professional acting, "
-        "dramatic lighting, smooth camera movement, movie production quality, "
-        "widescreen 16:9, shallow depth of field."
+        "Style: photorealistic 35mm film, 24fps smooth motion, natural character acting, dramatic lighting, "
+        "fluid camera pan, cinematic depth of field, 16:9 widescreen movie production quality."
     )
 
     prompt = "\n".join(prompt_parts)
 
-    # ── 2. Prepare output path ────────────────────────────────────────
-    output_dir = Path(settings.output_videos_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"scene_{scene_number}_video_{uuid.uuid4().hex[:8]}.mp4"
-    filepath = output_dir / filename
-
-    video_generated = False
-    model_used = settings.veo_video_model
-
-    # ── 3. Call Veo via Vertex AI ─────────────────────────────────────
     try:
         from google import genai
         from google.genai import types
@@ -514,16 +544,15 @@ async def generate_scene_video(
         client = genai.Client(
             vertexai=True,
             project=settings.gcp_project_id,
-            location=getattr(settings, "gcp_video_location", "global"),
+            location=getattr(settings, "gcp_video_location", settings.gcp_location or "us-central1"),
         )
 
-        logger.info(f"[Veo] Starting video generation for Scene {scene_number} "
-                     f"with model={model_used}...")
+        logger.info(f"[Veo 2.0] Initiating generative video generation for Scene {scene_number} with model={model_used}...")
 
         operation = client.models.generate_videos(
             model=model_used,
             source=types.GenerateVideosSource(
-                prompt=prompt[:1500],  # Veo prompt length limit
+                prompt=prompt[:1500],
             ),
             config=types.GenerateVideosConfig(
                 person_generation="ALLOW_ADULT",
@@ -533,26 +562,23 @@ async def generate_scene_video(
             ),
         )
 
-        logger.info(f"[Veo] Operation started. Polling for completion...")
+        logger.info("[Veo 2.0] Operation submitted. Polling for completion...")
 
-        # Poll the long-running operation (up to ~4 minutes)
-        max_polls = 12
-        poll_interval = 20  # seconds
+        max_polls = 14
+        poll_interval = 15
         for i in range(max_polls):
             await asyncio.sleep(poll_interval)
             try:
                 operation = client.operations.get(operation)
             except Exception as poll_err:
-                logger.warning(f"[Veo] Poll {i+1} error: {poll_err}")
+                logger.warning(f"[Veo 2.0] Poll {i+1} check: {poll_err}")
                 continue
 
             is_done = getattr(operation, "done", False)
-            logger.info(f"[Veo] Poll {i+1}/{max_polls}: done={is_done}")
-
+            logger.info(f"[Veo 2.0] Polling {i+1}/{max_polls}: done={is_done}")
             if is_done:
                 break
 
-        # Extract video from completed operation
         is_done = getattr(operation, "done", False)
         if is_done:
             response = getattr(operation, "response", None)
@@ -560,284 +586,264 @@ async def generate_scene_video(
                 generated_videos = getattr(response, "generated_videos", None)
                 if generated_videos and len(generated_videos) > 0:
                     video_obj = generated_videos[0].video
-
-                    # Try video_bytes first (direct bytes)
                     video_bytes = getattr(video_obj, "video_bytes", None)
                     if video_bytes:
                         with open(filepath, "wb") as f:
                             f.write(video_bytes)
-                        video_generated = True
-                        logger.info(f"[Veo] Video saved: {filepath} ({len(video_bytes)} bytes)")
+                        logger.info(f"[Veo 2.0] Video successfully generated and saved: {filepath} ({len(video_bytes)} bytes)")
+                        return True, filepath, model_used
 
-                    # Try URI (GCS download) if no inline bytes
-                    if not video_generated:
-                        video_uri = getattr(video_obj, "uri", None)
-                        if video_uri:
-                            logger.info(f"[Veo] Video available at URI: {video_uri}")
-                            try:
-                                from google.cloud import storage
-                                # Parse gs://bucket/path
-                                if video_uri.startswith("gs://"):
-                                    parts = video_uri[5:].split("/", 1)
-                                    bucket_name = parts[0]
-                                    blob_name = parts[1] if len(parts) > 1 else ""
-                                    storage_client = storage.Client(project=settings.gcp_project_id)
-                                    bucket = storage_client.bucket(bucket_name)
-                                    blob = bucket.blob(blob_name)
-                                    blob.download_to_filename(str(filepath))
-                                    video_generated = True
-                                    logger.info(f"[Veo] Downloaded from GCS: {filepath}")
-                            except Exception as gcs_err:
-                                logger.warning(f"[Veo] GCS download failed: {gcs_err}")
+                    video_uri = getattr(video_obj, "uri", None)
+                    if video_uri:
+                        try:
+                            from google.cloud import storage
+                            if video_uri.startswith("gs://"):
+                                parts = video_uri[5:].split("/", 1)
+                                bucket_name = parts[0]
+                                blob_name = parts[1] if len(parts) > 1 else ""
+                                storage_client = storage.Client(project=settings.gcp_project_id)
+                                bucket = storage_client.bucket(bucket_name)
+                                blob = bucket.blob(blob_name)
+                                blob.download_to_filename(str(filepath))
+                                logger.info(f"[Veo 2.0] Downloaded generated video from GCS: {filepath}")
+                                return True, filepath, model_used
+                        except Exception as gcs_err:
+                            logger.warning(f"[Veo 2.0] GCS download error: {gcs_err}")
 
-                if not video_generated:
-                    logger.warning("[Veo] Operation completed but no video data found in response")
-            else:
-                err = getattr(operation, "error", None)
-                logger.warning(f"[Veo] Operation completed with error: {err}")
+            err = getattr(operation, "error", None)
+            return False, None, f"Veo operation finished with error: {err}"
         else:
-            logger.warning("[Veo] Operation did not complete within polling window")
+            return False, None, "Veo operation timed out after polling window"
 
     except Exception as e:
-        logger.warning(f"[Veo] Primary video generation failed: {type(e).__name__}: {e}")
+        logger.warning(f"[Veo 2.0] Video generation request failed: {type(e).__name__}: {e}")
+        return False, None, str(e)
 
-    # ── 4. Fallback: Generate video via Pollinations (free API) ───────
-    if not video_generated:
-        logger.info("[Fallback] Trying video.pollinations.ai...")
+
+# ── Public API: generate_scene_video ─────────────────────────────────
+
+async def generate_scene_video(
+    scene_number: int = 1,
+    scene_description: str = "Screenplay scene performance",
+    dialogue_context: str = "",
+    characters: str = "",
+    character_visuals: str = "",
+    project_id: str = "",
+    video_mode: str = "auto",
+) -> str:
+    """
+    Generate a cinematic video performance for a screenplay scene.
+
+    Args:
+        scene_number: Scene number being animated.
+        scene_description: Detailed visual action lines and environment.
+        dialogue_context: Spoken dialogue lines to be performed.
+        characters: Character names and descriptions (fallback).
+        character_visuals: Character appearance spec JSON string (preferred).
+        project_id: Project identifier for ScriptState registration.
+        video_mode: "auto" (tries Veo 2.0 then animatic), "veo" (forces Veo 2.0),
+                    or "animatic" (forces dynamic multi-shot animatic engine).
+
+    Returns:
+        JSON string containing the generated video path, URL, and metadata.
+    """
+    from config import settings
+
+    logger.info(f"[VideoDirector] Generating scene video for Scene {scene_number} (mode={video_mode})...")
+
+    # ── Mode Branch: Forced Animatic ─────────────────────────────────
+    if video_mode.lower() == "animatic" and project_id:
         try:
-            import urllib.request
-            import urllib.parse
-
-            # Pollinations video API
-            safe_prompt = urllib.parse.quote(prompt[:500])
-            video_api_url = (
-                f"https://video.pollinations.ai/prompt/{safe_prompt}"
-                f"?width=1280&height=720&duration=5&nologo=true"
+            animatic_res = await generate_multi_shot_dialogue_video(
+                project_id=project_id,
+                scene_number=scene_number,
+                scene_description=scene_description,
+                character_visuals=character_visuals,
             )
+            if animatic_res:
+                return animatic_res
+        except Exception as a_err:
+            logger.warning(f"[VideoDirector] Animatic mode error: {a_err}")
 
-            req = urllib.request.Request(video_api_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                video_data = resp.read()
-                if len(video_data) > 1000:  # Sanity check — real video is > 1KB
-                    with open(filepath, "wb") as f:
-                        f.write(video_data)
-                    video_generated = True
-                    model_used = "pollinations-video"
-                    logger.info(f"[Fallback] Pollinations video saved: {filepath} ({len(video_data)} bytes)")
-                else:
-                    logger.warning(f"[Fallback] Pollinations returned too-small response ({len(video_data)} bytes)")
+    # ── Mode Branch: Veo 2.0 Generative Video ────────────────────────
+    veo_success = False
+    veo_filepath = None
+    veo_model = settings.veo_video_model
 
-        except Exception as poll_err:
-            logger.warning(f"[Fallback] Pollinations video failed: {poll_err}")
+    if video_mode.lower() in ("veo", "auto"):
+        veo_success, veo_filepath, veo_info = await generate_veo_scene_video(
+            scene_number=scene_number,
+            scene_description=scene_description,
+            dialogue_context=dialogue_context,
+            character_visuals=character_visuals,
+            characters=characters,
+            project_id=project_id,
+        )
 
-    # ── 5. Final fallback: generate a sequence of scene images as slideshow ─
-    if not video_generated:
-        logger.info("[Fallback] Generating scene images as video frames...")
-        try:
-            from tools.image_gen import generate_scene_image
+        if veo_success and veo_filepath and veo_filepath.exists():
+            # If scene has dialogue audio or table read audio, merge it!
+            final_filepath = veo_filepath
+            final_filename = veo_filepath.name
+            merged_with_dialogue = False
+            merged_with_soundtrack = False
 
-            # Generate 3 key-moment images for the scene
-            frames = []
-            moments = [
-                f"Opening shot: {scene_description[:200]}",
-                f"Mid scene dialogue: {dialogue_context[:200]}" if dialogue_context else f"Mid scene action: {scene_description[:200]}",
-                f"Closing shot: {scene_description[:200]}, dramatic angle",
-            ]
-
-            for idx, moment_desc in enumerate(moments):
-                result_json = await generate_scene_image(
-                    scene_description=moment_desc,
-                    dialogue_context=dialogue_context if idx == 1 else "",
-                    characters=characters,
-                    character_visuals=character_visuals,
-                )
-                result = json.loads(result_json)
-                if result.get("success") and result.get("image_path"):
-                    frames.append(result["image_path"])
-                    logger.info(f"[Fallback] Generated frame {idx+1}: {result['image_path']}")
-
-            if frames:
-                # Create a slideshow MP4 from the frames using ffmpeg if available
+            if project_id:
                 try:
-                    import subprocess
+                    from tools.script_state import _get_state, attach_media_to_scene, save_media_analysis
+                    state = await _get_state(project_id)
+                    scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
 
-                    ffmpeg_path = _get_ffmpeg_path()
-                    if ffmpeg_path:
-                        # Create a concat file
-                        concat_path = output_dir / f"concat_{uuid.uuid4().hex[:6]}.txt"
-                        with open(concat_path, "w") as cf:
-                            for frame_path in frames:
-                                cf.write(f"file '{frame_path}'\n")
-                                cf.write("duration 2\n")
-                            # Last frame needs to be listed again
-                            cf.write(f"file '{frames[-1]}'\n")
+                    audio_file = None
+                    soundtrack_file = None
 
-                        cmd = [
-                            ffmpeg_path, "-y",
-                            "-f", "concat", "-safe", "0",
-                            "-i", str(concat_path),
-                            "-vsync", "vfr",
-                            "-pix_fmt", "yuv420p",
-                            "-c:v", "libx264",
-                            "-movflags", "+faststart",
-                            str(filepath),
-                        ]
-                        result = subprocess.run(cmd, capture_output=True, timeout=30)
-                        if filepath.exists() and filepath.stat().st_size > 1000:
-                            video_generated = True
-                            model_used = "image-slideshow"
-                            logger.info(f"[Fallback] Slideshow video created: {filepath}")
+                    if scene:
+                        if scene.table_read_audio:
+                            if scene.table_read_audio.startswith("/api/media/audio/"):
+                                fname = scene.table_read_audio.split("/")[-1]
+                                candidate = Path(settings.output_audio_dir) / fname
+                                if candidate.exists():
+                                    audio_file = candidate
+                            else:
+                                candidate = Path(scene.table_read_audio)
+                                if candidate.exists():
+                                    audio_file = candidate
 
-                        # Cleanup concat file
-                        concat_path.unlink(missing_ok=True)
-                except Exception as ff_err:
-                    logger.warning(f"[Fallback] ffmpeg slideshow failed: {ff_err}")
+                        # If no table read audio yet, generate on the fly
+                        if not audio_file and scene.dialogue:
+                            logger.info(f"[VeoMerge] Generating Table Read audio for Scene {scene_number}...")
+                            from tools.tts import perform_table_read
+                            dialogue_payload = json.dumps({"dialogue": [d.model_dump() for d in scene.dialogue]})
+                            tts_res_json = await perform_table_read(project_id, dialogue_payload)
+                            tts_res = json.loads(tts_res_json)
+                            if tts_res.get("success") and tts_res.get("audio_path"):
+                                audio_file = Path(tts_res["audio_path"])
+                                if tts_res.get("url"):
+                                    await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
 
-                if not video_generated:
-                    # No ffmpeg — return the image frames as the result
-                    video_url = f"/api/media/videos/{filename}"
+                        if scene.soundtrack_audio:
+                            if scene.soundtrack_audio.startswith("/api/media/audio/"):
+                                sfname = scene.soundtrack_audio.split("/")[-1]
+                                scandidate = Path(settings.output_audio_dir) / sfname
+                                if scandidate.exists():
+                                    soundtrack_file = scandidate
+                            else:
+                                scandidate = Path(scene.soundtrack_audio)
+                                if scandidate.exists():
+                                    soundtrack_file = scandidate
+
+                    if audio_file and audio_file.exists():
+                        merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_voiced_{uuid.uuid4().hex[:8]}.mp4"
+                        merged_path = merge_video_with_audio(
+                            video_path=veo_filepath,
+                            audio_path=audio_file,
+                            output_path=merged_output_path,
+                            soundtrack_path=soundtrack_file,
+                        )
+                        if merged_path and merged_path.exists():
+                            final_filepath = merged_path
+                            final_filename = merged_path.name
+                            merged_with_dialogue = True
+                            if soundtrack_file:
+                                merged_with_soundtrack = True
+
+                    video_url = f"/api/media/videos/{final_filename}"
+                    await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
+                    await save_media_analysis(
+                        project_id=project_id,
+                        media_type="video",
+                        media_url=video_url,
+                        filename=final_filename,
+                        scene_number=scene_number,
+                        is_canon=True,
+                        caption=f"Google Veo 2.0 AI Cinematic Video for Scene {scene_number}: {scene_description[:100]}",
+                        structured_description={
+                            "video_summary": f"Google Veo 2.0 Cinematic Performance: {scene_description}",
+                            "has_embedded_dialogue": merged_with_dialogue,
+                            "has_soundtrack": merged_with_soundtrack,
+                            "video_mode": "veo-2.0",
+                        },
+                    )
+
                     return json.dumps({
                         "success": True,
-                        "type": "image_sequence",
-                        "frames": [f"/api/media/images/{Path(f).name}" for f in frames],
+                        "video_path": str(final_filepath),
+                        "filename": final_filename,
+                        "url": video_url,
                         "scene_number": scene_number,
-                        "model": "scene-image-sequence",
-                        "message": (
-                            f"Generated {len(frames)} cinematic stills for Scene {scene_number}. "
-                            f"Full video generation requires Veo 2.0 access. "
-                            f"View the stills in the Media Lab!"
-                        ),
+                        "model": veo_model,
+                        "video_mode": "veo",
+                        "merged_with_dialogue": merged_with_dialogue,
+                        "merged_with_soundtrack": merged_with_soundtrack,
+                        "message": f"🎬 Generated high-fidelity cinematic video using Google Veo 2.0 for Scene {scene_number}!",
                     })
 
-        except Exception as img_err:
-            logger.warning(f"[Fallback] Image sequence generation failed: {img_err}")
+                except Exception as save_err:
+                    logger.warning(f"[VeoMerge] Error registering Veo video: {save_err}")
 
-    # ── 6. Fail fast if no video ──────────────────────────────────────
-    if not video_generated:
-        return json.dumps({
-            "success": False,
-            "error": (
-                "Video generation failed. The Veo 2.0 model may not be enabled "
-                "for your GCP project, or the prompt may have been filtered. "
-                "Please check your Vertex AI console and try again."
-            ),
-            "scene_number": scene_number,
-        })
-
-    # ── 7. Automatic Audio-Video Merging with Table Read Dialogue ─────
-    merged_with_dialogue = False
-    merged_with_soundtrack = False
-
+    # ── Fallback / Auto: Dynamic Multi-Shot Animatic V2 ───────────────
     if project_id:
         try:
-            from tools.script_state import _get_state, attach_media_to_scene
-            state = await _get_state(project_id)
-            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
-
-            audio_file = None
-            soundtrack_file = None
-
-            if scene:
-                # A. Check existing Table Read audio
-                if scene.table_read_audio:
-                    if scene.table_read_audio.startswith("/api/media/audio/"):
-                        fname = scene.table_read_audio.split("/")[-1]
-                        candidate = Path(settings.output_audio_dir) / fname
-                        if candidate.exists():
-                            audio_file = candidate
-                    else:
-                        candidate = Path(scene.table_read_audio)
-                        if candidate.exists():
-                            audio_file = candidate
-
-                # B. If no table read yet, but scene has dialogue lines, generate Table Read automatically!
-                if not audio_file and scene.dialogue:
-                    logger.info(f"[AudioMerge] Generating Table Read audio automatically for Scene {scene_number}...")
-                    from tools.tts import perform_table_read
-                    dialogue_payload = json.dumps({"dialogue": [d.model_dump() for d in scene.dialogue]})
-                    tts_res_json = await perform_table_read(project_id, dialogue_payload)
-                    tts_res = json.loads(tts_res_json)
-                    if tts_res.get("success") and tts_res.get("audio_path"):
-                        audio_file = Path(tts_res["audio_path"])
-                        if tts_res.get("url"):
-                            await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
-                            logger.info(f"[AudioMerge] On-the-fly Table Read generated & attached: {audio_file}")
-
-                # C. Check existing Soundtrack score
-                if scene.soundtrack_audio:
-                    if scene.soundtrack_audio.startswith("/api/media/audio/"):
-                        sfname = scene.soundtrack_audio.split("/")[-1]
-                        scandidate = Path(settings.output_audio_dir) / sfname
-                        if scandidate.exists():
-                            soundtrack_file = scandidate
-                    else:
-                        scandidate = Path(scene.soundtrack_audio)
-                        if scandidate.exists():
-                            soundtrack_file = scandidate
-
-            # D. Perform the audio merge if audio is available
-            if audio_file and audio_file.exists():
-                merged_output_path = output_dir / f"scene_{scene_number}_voiced_{uuid.uuid4().hex[:8]}.mp4"
-                merged_path = merge_video_with_audio(
-                    video_path=filepath,
-                    audio_path=audio_file,
-                    output_path=merged_output_path,
-                    soundtrack_path=soundtrack_file,
-                )
-                if merged_path and merged_path.exists():
-                    filepath = merged_path
-                    filename = merged_path.name
-                    merged_with_dialogue = True
-                    if soundtrack_file:
-                        merged_with_soundtrack = True
-                    logger.info(f"[AudioMerge] Video successfully merged with dialogue: {filename}")
-        except Exception as merge_err:
-            logger.warning(f"[AudioMerge] Auto-merge encountered an error: {merge_err}")
-
-    video_url = f"/api/media/videos/{filename}"
-
-    # ── 8. Save to ScriptState ────────────────────────────────────────
-    if project_id:
-        try:
-            from tools.script_state import save_media_analysis, attach_media_to_scene
-            audio_note = " (with synchronized dialogue audio)" if merged_with_dialogue else ""
-            await save_media_analysis(
+            logger.info(f"[VideoDirector] Running Dynamic Multi-Shot Animatic Engine for Scene {scene_number}...")
+            animatic_res = await generate_multi_shot_dialogue_video(
                 project_id=project_id,
-                media_type="video",
-                media_url=video_url,
-                filename=filename,
                 scene_number=scene_number,
-                is_canon=True,
-                caption=f"AI Video Performance for Scene {scene_number}{audio_note}: {scene_description[:100]}",
-                structured_description={
-                    "video_summary": f"Video clip of Scene {scene_number}: {scene_description}",
-                    "has_embedded_dialogue": merged_with_dialogue,
-                    "has_soundtrack": merged_with_soundtrack,
-                    "transcript": [
-                        {"timestamp": "00:01", "speaker": "Character", "dialogue": dialogue_context[:100]}
-                    ] if dialogue_context else [],
-                    "visual_events": [
-                        {"timestamp": "00:00", "description": scene_description[:120]}
-                    ],
-                },
+                scene_description=scene_description,
+                character_visuals=character_visuals,
             )
-            await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
-        except Exception as err:
-            logger.warning(f"Could not register generated video in ScriptState: {err}")
+            if animatic_res:
+                return animatic_res
+        except Exception as anim_err:
+            logger.warning(f"[VideoDirector] Dynamic animatic pipeline encountered an issue: {anim_err}")
 
-    msg = f"Generated video clip for Scene {scene_number}."
-    if merged_with_dialogue:
-        msg = f"🎬 Generated video clip with synchronized dialogue performance for Scene {scene_number}! Watch & listen in the Media Lab or Script Workspace."
+    # ── Final Standalone Fallback ─────────────────────────────────────
+    output_dir = Path(settings.output_videos_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fallback_filename = f"scene_{scene_number}_video_{uuid.uuid4().hex[:8]}.mp4"
+    fallback_filepath = output_dir / fallback_filename
+
+    try:
+        from tools.image_gen import generate_scene_image
+        res_json = await generate_scene_image(
+            scene_description=f"Cinematic keyframe shot: {scene_description}",
+            dialogue_context=dialogue_context,
+            characters=characters,
+            character_visuals=character_visuals,
+        )
+        res = json.loads(res_json)
+        frame_path = Path(res.get("image_path", "")) if res.get("success") else None
+
+        ffmpeg_exe = _get_ffmpeg_path()
+        if ffmpeg_exe and frame_path and frame_path.exists():
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-loop", "1", "-i", str(frame_path),
+                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=24000",
+                "-vf", "scale=1280:720,zoompan=z='min(zoom+0.0015,1.20)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30,eq=contrast=1.06:saturation=1.10,vignette=PI/4",
+                "-t", "5.0",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                str(fallback_filepath),
+            ]
+            subprocess.run(cmd, capture_output=True, timeout=30)
+            if fallback_filepath.exists() and fallback_filepath.stat().st_size > 1000:
+                video_url = f"/api/media/videos/{fallback_filename}"
+                return json.dumps({
+                    "success": True,
+                    "video_path": str(fallback_filepath),
+                    "filename": fallback_filename,
+                    "url": video_url,
+                    "scene_number": scene_number,
+                    "model": "cinematic-motion-keyframe",
+                    "video_mode": "animatic",
+                    "message": f"🎬 Generated cinematic motion keyframe video for Scene {scene_number}!",
+                })
+    except Exception as fb_err:
+        logger.warning(f"[VideoDirector] Final fallback error: {fb_err}")
 
     return json.dumps({
-        "success": True,
-        "video_path": str(filepath),
-        "filename": filename,
-        "url": video_url,
+        "success": False,
+        "error": "Video generation could not complete. Please verify your video settings and try again.",
         "scene_number": scene_number,
-        "model": model_used,
-        "merged_with_dialogue": merged_with_dialogue,
-        "merged_with_soundtrack": merged_with_soundtrack,
-        "prompt": prompt[:200],
-        "message": msg,
     })

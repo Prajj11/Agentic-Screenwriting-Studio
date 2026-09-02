@@ -315,3 +315,27 @@ export async function deleteMediaItem(
     return false;
   }
 }
+
+export async function generateVideo(params: {
+  scene_number: number;
+  scene_description?: string;
+  dialogue_context?: string;
+  characters?: string;
+  project_id?: string;
+  mode?: 'auto' | 'veo' | 'animatic';
+}): Promise<{ success: boolean; url?: string; message?: string; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/video/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      throw new Error(`Video generation error: ${res.status}`);
+    }
+    return await res.json();
+  } catch (err: any) {
+    throw new Error(err?.message || 'Failed to generate video.');
+  }
+}
+

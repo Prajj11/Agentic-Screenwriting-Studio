@@ -763,12 +763,18 @@ async def generate_video_endpoint(payload: dict):
     scene_description = payload.get("scene_description", "Cinematic screenplay scene performance")
     dialogue_context = payload.get("dialogue_context", "")
     characters = payload.get("characters", "")
+    character_visuals = payload.get("character_visuals", "")
+    project_id = payload.get("project_id", "")
+    video_mode = payload.get("mode", payload.get("video_mode", "auto"))
 
     result_json = await generate_scene_video(
         scene_number=scene_number,
         scene_description=scene_description,
         dialogue_context=dialogue_context,
         characters=characters,
+        character_visuals=character_visuals,
+        project_id=project_id,
+        video_mode=video_mode,
     )
     return json.loads(result_json)
 

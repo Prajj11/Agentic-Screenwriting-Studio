@@ -16,6 +16,7 @@ interface SidebarProps {
 const QUICK_ACTIONS = [
   { label: '📐 Beat Sheet', prompt: 'Generate the beat sheet for this story', icon: '📐' },
   { label: '✍️ Draft Scene', prompt: 'Draft the next scene from the beat sheet', icon: '✍️' },
+  { label: '🎬 Animate Scene', prompt: 'Generate a dynamic video performance for the latest scene', icon: '🎬' },
   { label: '🎥 Analyze Media', prompt: 'Analyze uploaded reference image or video', icon: '🎥' },
   { label: '🔍 Check Continuity', prompt: 'Run a continuity check on the latest scene', icon: '🔍' },
   { label: '🎙️ Table Read', prompt: 'Perform a table read of the latest scene', icon: '🎙️' },

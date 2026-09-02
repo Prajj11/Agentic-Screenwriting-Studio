@@ -649,6 +649,33 @@ function MediaCard({
         <div>
           {isVideo ? (
             <div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: 'var(--space-md)' }}>
+                {desc.video_mode === 'veo-2.0' || item.caption?.includes('Veo') ? (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(52, 168, 83, 0.2)', color: '#34a853', fontWeight: 600, border: '1px solid rgba(52, 168, 83, 0.3)' }}>
+                    🎬 Google Veo 2.0 (Vertex AI)
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(245, 166, 35, 0.2)', color: '#f5a623', fontWeight: 600, border: '1px solid rgba(245, 166, 35, 0.3)' }}>
+                    ⚡ Dynamic Multi-Shot Animatic {desc.shots_count ? `(${desc.shots_count} dynamic cuts)` : ''}
+                  </span>
+                )}
+                {desc.duration_seconds && (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'var(--surface-sunken)', color: 'var(--text-secondary)' }}>
+                    ⏱️ {desc.duration_seconds.toFixed(1)}s
+                  </span>
+                )}
+                {desc.has_embedded_dialogue && (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8' }}>
+                    🎙️ Spoken Dialogue Sync
+                  </span>
+                )}
+                {desc.has_soundtrack && (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.2)', color: '#f472b6' }}>
+                    🎵 Lyria 3 Soundtrack Score
+                  </span>
+                )}
+              </div>
+
               {(item.caption || desc.video_summary) && (
                 <div style={{ marginBottom: 'var(--space-lg)', background: 'var(--bg-primary)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent-primary)', marginBottom: '4px' }}>VIDEO SUMMARY</div>
@@ -660,15 +687,22 @@ function MediaCard({
 
               {desc.transcript && desc.transcript.length > 0 && (
                 <div style={{ marginBottom: 'var(--space-lg)' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent-secondary)', marginBottom: 'var(--space-xs)' }}>TRANSCRIPT</div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--accent-secondary)', marginBottom: 'var(--space-xs)' }}>TRANSCRIPT & TIMELINE</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', background: 'var(--bg-primary)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', maxHeight: '200px', overflowY: 'auto' }}>
                     {desc.transcript.map((t: any, idx: number) => (
                       <div key={idx} style={{ fontSize: '0.85rem' }}>
-                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', marginRight: '8px' }}>
-                          {t.timestamp}
-                        </span>
+                        {t.timestamp && (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', marginRight: '8px' }}>
+                            {t.timestamp}
+                          </span>
+                        )}
+                        {t.duration && (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', marginRight: '8px' }}>
+                            [{t.duration.toFixed(1)}s]
+                          </span>
+                        )}
                         <strong style={{ color: 'var(--accent-primary)', marginRight: '6px' }}>{t.speaker}:</strong>
-                        <span>&ldquo;{t.dialogue}&rdquo;</span>
+                        <span>&ldquo;{t.line || t.dialogue}&rdquo;</span>
                       </div>
                     ))}
                   </div>
