@@ -225,9 +225,9 @@ def _render_dynamic_animatic_shot(
         f"zoompan=z='{z_filter}':d={total_frames}:x='{x_filter}':y='{y_filter}':s=1280x720:fps={fps}",
         "eq=contrast=1.06:brightness=0.01:saturation=1.10",
         "vignette=PI/4",
-        "drawbox=y=ih-115:color=black@0.78:width=iw:height=115:t=fill",
-        f"drawtext=text='{esc_speaker}':fontcolor=0xF5A623:fontsize=22:x=60:y=h-98",
-        f"drawtext=text='{esc_line}':fontcolor=0xFFFFFF:fontsize=20:x=60:y=h-58",
+        "drawbox=y=ih-145:color=black@0.82:width=iw:height=105:t=fill",
+        f"drawtext=text='{esc_speaker}':fontcolor=0xF5A623:fontsize=22:x=60:y=h-130",
+        f"drawtext=text='{esc_line}':fontcolor=0xFFFFFF:fontsize=21:x=60:y=h-92",
     ]
     vf_string = ",".join(vf_parts)
 
@@ -301,49 +301,69 @@ async def generate_multi_shot_dialogue_video(
         logger.warning("[MultiShotDirector] No audio segments generated.")
         return None
 
-    # Step 2: Ensure all speaking characters have canonical portraits
-    character_portraits = {}
+    # Step 2: Generate cinematic scene-action images for each dialogue beat
+    # Instead of static face portraits, we generate FULL SCENE images showing
+    # the character IN the environment performing actions relevant to the line.
+    from tools.tts import normalize_character_name, find_matching_character
+    from tools.image_gen import generate_scene_image
+
+    shot_images: dict[int, Path] = {}  # idx -> image path
+    scene_mood_board = None
+
+    # Try to use existing mood board as establishing shot base
+    if scene.mood_board_image:
+        mb_cand = images_dir / scene.mood_board_image.split("/")[-1]
+        if mb_cand.exists():
+            scene_mood_board = mb_cand
+
+    # Build character visual descriptions for prompts
+    char_visual_map = {}
     for seg in segments:
         char_name = seg["character"]
-        if char_name in character_portraits:
+        if char_name in char_visual_map:
             continue
+        norm_char = normalize_character_name(char_name)
+        canon_name, char_obj = find_matching_character(norm_char, state.characters)
+        if char_obj and char_obj.visual_description:
+            char_visual_map[char_name] = char_obj.visual_description
+        else:
+            char_visual_map[char_name] = f"Character named {canon_name or char_name}"
 
-        char_obj = state.characters.get(char_name)
-        portrait_file = None
+    # Generate a unique cinematic scene image for each dialogue beat
+    for idx, seg in enumerate(segments):
+        speaker = seg["character"]
+        line = seg.get("line", "")
+        vis_desc = char_visual_map.get(speaker, speaker)
 
-        # Check existing portrait
-        if char_obj and char_obj.reference_portrait:
-            if char_obj.reference_portrait.startswith("/api/media/images/"):
-                p_cand = images_dir / char_obj.reference_portrait.split("/")[-1]
-                if p_cand.exists():
-                    portrait_file = p_cand
+        # Build a rich action-oriented prompt for this specific dialogue beat
+        beat_prompt = (
+            f"Cinematic widescreen film still from a movie scene. "
+            f"Setting: {scene_description[:200]}. "
+            f"Character {speaker} ({vis_desc}) is in the middle of speaking: \"{line[:120]}\". "
+            f"Show the character's FULL BODY or MEDIUM SHOT in the environment, "
+            f"with expressive body language, hands gesturing, interacting with props or surroundings. "
+            f"NOT a headshot or portrait. Show the full scene environment around them. "
+            f"Cinematic lighting, 35mm film grain, dramatic composition, 16:9 widescreen aspect ratio."
+        )
+
+        logger.info(f"[MultiShotDirector] Generating scene-action image for Shot {idx+1}/{len(segments)} ({speaker})...")
+        try:
+            img_json = await generate_scene_image(
+                scene_description=beat_prompt,
+                dialogue_context=line,
+                characters=f"{speaker}: {vis_desc}",
+            )
+            img_res = json.loads(img_json)
+            if img_res.get("success") and img_res.get("image_path"):
+                shot_images[idx] = Path(img_res["image_path"])
+                logger.info(f"[MultiShotDirector] Shot {idx+1} image generated: {img_res['image_path']}")
             else:
-                p_cand = Path(char_obj.reference_portrait)
-                if p_cand.exists():
-                    portrait_file = p_cand
+                logger.warning(f"[MultiShotDirector] Shot {idx+1} image generation failed, will use fallback")
+        except Exception as img_err:
+            logger.warning(f"[MultiShotDirector] Shot {idx+1} image error: {img_err}")
 
-        # Generate portrait via Gemini Image if missing
-        if not portrait_file:
-            logger.info(f"[MultiShotDirector] Generating canonical reference portrait for '{char_name}'...")
-            vis_desc = char_obj.visual_description if (char_obj and char_obj.visual_description) else f"Actor portraying {char_name} in scene {scene_description[:100]}"
-            port_json = await generate_character_portrait(char_name, vis_desc)
-            port_res = json.loads(port_json)
-            if port_res.get("success") and port_res.get("image_path"):
-                portrait_file = Path(port_res["image_path"])
-                if char_obj:
-                    char_obj.reference_portrait = port_res.get("url")
-                    await _save_state(project_id)
-
-        # Fallback to scene mood board if character portrait couldn't be generated
-        if not portrait_file and scene.mood_board_image:
-            mb_cand = images_dir / scene.mood_board_image.split("/")[-1]
-            if mb_cand.exists():
-                portrait_file = mb_cand
-
-        if portrait_file:
-            character_portraits[char_name] = portrait_file
-
-    # Step 3: Render each speaker shot with dynamic camera motion, subtitles & audio
+    # Step 3: Render each shot with dynamic camera motion, subtitles & audio
+    # Now using scene-action images (full environment) instead of face portraits
     shot_video_files = []
     fps = 30
 
@@ -352,13 +372,15 @@ async def generate_multi_shot_dialogue_video(
         dialogue_line = seg.get("line", "")
         duration = seg["duration"]
         audio_path = Path(seg["audio_path"])
-        portrait_path = character_portraits.get(speaker)
+
+        # Use the scene-action image for this beat, fallback to mood board
+        shot_image = shot_images.get(idx) or scene_mood_board
 
         shot_video_path = output_dir / f"scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.mp4"
         logger.info(f"[MultiShotDirector] Rendering Shot {idx+1}/{len(segments)} ({speaker}, {duration:.1f}s)...")
 
         ok = _render_dynamic_animatic_shot(
-            portrait_path=portrait_path,
+            portrait_path=shot_image,
             audio_path=audio_path,
             speaker=speaker,
             dialogue_line=dialogue_line,
@@ -373,6 +395,7 @@ async def generate_multi_shot_dialogue_video(
             shot_video_files.append(shot_video_path)
         else:
             logger.warning(f"[MultiShotDirector] Shot {idx+1} render failed")
+
 
     if not shot_video_files:
         logger.warning("[MultiShotDirector] No shots rendered successfully.")
@@ -524,6 +547,30 @@ async def generate_veo_scene_video(
     appearance_block = _build_character_appearance_block(character_visuals)
     if appearance_block:
         prompt_parts.append(appearance_block)
+    elif project_id:
+        try:
+            from tools.script_state import _get_state
+            from tools.tts import normalize_character_name, find_matching_character
+            state = await _get_state(project_id)
+            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+            char_lines = []
+            char_list = (scene.characters if scene and scene.characters else [])
+            if not char_list and scene and scene.dialogue:
+                char_list = list(dict.fromkeys([d.character for d in scene.dialogue if d.character]))
+            if not char_list and characters:
+                char_list = [c.strip() for c in characters.split(",") if c.strip()]
+            for cname in char_list:
+                canon_name, c_obj = find_matching_character(normalize_character_name(cname), state.characters)
+                if c_obj and c_obj.visual_description:
+                    char_lines.append(f"- {canon_name or cname}: {c_obj.visual_description}")
+            if char_lines:
+                prompt_parts.append("Character Visuals & Acting Guide:\n" + "\n".join(char_lines))
+            elif characters:
+                prompt_parts.append(f"Characters: {characters}")
+        except Exception as e:
+            logger.warning(f"[Veo] Could not load character visuals from state: {e}")
+            if characters:
+                prompt_parts.append(f"Characters: {characters}")
     elif characters:
         prompt_parts.append(f"Characters: {characters}")
 
@@ -531,8 +578,7 @@ async def generate_veo_scene_video(
         prompt_parts.append(f"Performance & Acting: Characters speaking and emotionally reacting to the scene: {dialogue_context}")
 
     prompt_parts.append(
-        "Style: photorealistic 35mm film, 24fps smooth motion, natural character acting, dramatic lighting, "
-        "fluid camera pan, cinematic depth of field, 16:9 widescreen movie production quality."
+        "Cinematography & Motion: Dynamic physical movement, character gestures and emotional body language, authentic character interaction, steadycam tracking shot, natural kinetic blocking, rich facial micro-expressions, cinematic lighting, 24fps filmic motion blur, 16:9 widescreen aspect ratio."
     )
 
     prompt = "\n".join(prompt_parts)
@@ -547,7 +593,7 @@ async def generate_veo_scene_video(
             location=getattr(settings, "gcp_video_location", settings.gcp_location or "us-central1"),
         )
 
-        logger.info(f"[Veo 2.0] Initiating generative video generation for Scene {scene_number} with model={model_used}...")
+        logger.info(f"[Veo] Initiating generative video generation for Scene {scene_number} with model={model_used}...")
 
         operation = client.models.generate_videos(
             model=model_used,
@@ -562,20 +608,20 @@ async def generate_veo_scene_video(
             ),
         )
 
-        logger.info("[Veo 2.0] Operation submitted. Polling for completion...")
+        logger.info("[Veo] Operation submitted. Polling for completion...")
 
-        max_polls = 14
+        max_polls = 20
         poll_interval = 15
         for i in range(max_polls):
             await asyncio.sleep(poll_interval)
             try:
                 operation = client.operations.get(operation)
             except Exception as poll_err:
-                logger.warning(f"[Veo 2.0] Poll {i+1} check: {poll_err}")
+                logger.warning(f"[Veo] Poll {i+1} check: {poll_err}")
                 continue
 
             is_done = getattr(operation, "done", False)
-            logger.info(f"[Veo 2.0] Polling {i+1}/{max_polls}: done={is_done}")
+            logger.info(f"[Veo] Polling {i+1}/{max_polls}: done={is_done}")
             if is_done:
                 break
 
@@ -651,6 +697,11 @@ async def generate_scene_video(
 
     logger.info(f"[VideoDirector] Generating scene video for Scene {scene_number} (mode={video_mode})...")
 
+    if not project_id:
+        from tools.script_state import _active_states
+        if _active_states:
+            project_id = list(_active_states.keys())[-1]
+
     # ── Mode Branch: Forced Animatic ─────────────────────────────────
     if video_mode.lower() == "animatic" and project_id:
         try:
@@ -665,7 +716,7 @@ async def generate_scene_video(
         except Exception as a_err:
             logger.warning(f"[VideoDirector] Animatic mode error: {a_err}")
 
-    # ── Mode Branch: Veo 2.0 Generative Video ────────────────────────
+    # ── Mode Branch: Veo Generative Video ────────────────────────────
     veo_success = False
     veo_filepath = None
     veo_model = settings.veo_video_model
@@ -681,7 +732,6 @@ async def generate_scene_video(
         )
 
         if veo_success and veo_filepath and veo_filepath.exists():
-            # If scene has dialogue audio or table read audio, merge it!
             final_filepath = veo_filepath
             final_filename = veo_filepath.name
             merged_with_dialogue = False
@@ -712,7 +762,10 @@ async def generate_scene_video(
                         if not audio_file and scene.dialogue:
                             logger.info(f"[VeoMerge] Generating Table Read audio for Scene {scene_number}...")
                             from tools.tts import perform_table_read
-                            dialogue_payload = json.dumps({"dialogue": [d.model_dump() for d in scene.dialogue]})
+                            dialogue_payload = json.dumps({
+                                "scene_number": scene_number,
+                                "dialogue": [d.model_dump() for d in scene.dialogue],
+                            })
                             tts_res_json = await perform_table_read(project_id, dialogue_payload)
                             tts_res = json.loads(tts_res_json)
                             if tts_res.get("success") and tts_res.get("audio_path"):
@@ -755,32 +808,34 @@ async def generate_scene_video(
                         filename=final_filename,
                         scene_number=scene_number,
                         is_canon=True,
-                        caption=f"Google Veo 2.0 AI Cinematic Video for Scene {scene_number}: {scene_description[:100]}",
+                        caption=f"Google Veo 3.1 AI Cinematic Video for Scene {scene_number}: {scene_description[:100]}",
                         structured_description={
-                            "video_summary": f"Google Veo 2.0 Cinematic Performance: {scene_description}",
+                            "video_summary": f"Google Veo 3.1 Cinematic Performance: {scene_description}",
                             "has_embedded_dialogue": merged_with_dialogue,
                             "has_soundtrack": merged_with_soundtrack,
-                            "video_mode": "veo-2.0",
+                            "video_mode": "veo",
+                            "model": veo_model,
                         },
                     )
-
-                    return json.dumps({
-                        "success": True,
-                        "video_path": str(final_filepath),
-                        "filename": final_filename,
-                        "url": video_url,
-                        "scene_number": scene_number,
-                        "model": veo_model,
-                        "video_mode": "veo",
-                        "merged_with_dialogue": merged_with_dialogue,
-                        "merged_with_soundtrack": merged_with_soundtrack,
-                        "message": f"🎬 Generated high-fidelity cinematic video using Google Veo 2.0 for Scene {scene_number}!",
-                    })
-
                 except Exception as save_err:
                     logger.warning(f"[VeoMerge] Error registering Veo video: {save_err}")
 
+            video_url = f"/api/media/videos/{final_filename}"
+            return json.dumps({
+                "success": True,
+                "video_path": str(final_filepath),
+                "filename": final_filename,
+                "url": video_url,
+                "scene_number": scene_number,
+                "model": veo_model,
+                "video_mode": "veo",
+                "merged_with_dialogue": merged_with_dialogue,
+                "merged_with_soundtrack": merged_with_soundtrack,
+                "message": f"🎬 Generated high-fidelity cinematic video using Google Veo 3.1 for Scene {scene_number}!",
+            })
+
     # ── Fallback / Auto: Dynamic Multi-Shot Animatic V2 ───────────────
+
     if project_id:
         try:
             logger.info(f"[VideoDirector] Running Dynamic Multi-Shot Animatic Engine for Scene {scene_number}...")

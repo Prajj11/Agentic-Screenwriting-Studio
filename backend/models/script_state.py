@@ -303,6 +303,11 @@ class ScriptState(BaseModel):
     # Media Analysis
     media_analyses: list[MediaAnalysis] = Field(default_factory=list)
 
+    # Voice assignments (character_name_normalized → TTS voice name)
+    # Persisted so voices survive server restarts and stay consistent
+    # between Table Read and Animatic pipelines.
+    voice_assignments: dict[str, str] = Field(default_factory=dict)
+
     # Metadata
     metadata: ScriptMetadata = Field(default_factory=ScriptMetadata)
 

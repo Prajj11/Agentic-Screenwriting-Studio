@@ -605,12 +605,13 @@ async def delete_project(project_id: str):
 @app.get("/api/script/{project_id}")
 async def get_script_state(project_id: str):
     """Get the full Script State for a project."""
-    state = get_active_state_sync(project_id)
+    store = await get_sqlite_store()
+    state = await store.load_script_state(project_id)
     if not state:
-        store = await get_sqlite_store()
-        state = await store.load_script_state(project_id)
+        state = get_active_state_sync(project_id)
     if not state:
         raise HTTPException(404, f"Project {project_id} not found")
+    set_active_state(project_id, state)
     return json.loads(state.model_dump_json())
 
 

@@ -83,7 +83,7 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
                       <div style={{ display: 'flex', gap: '6px' }}>
                         {isVeo ? (
                           <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(52, 168, 83, 0.2)', color: '#34a853', fontWeight: 600, border: '1px solid rgba(52, 168, 83, 0.3)' }}>
-                            🎬 Google Veo 2.0
+                            🎬 Google Veo 3.1
                           </span>
                         ) : (
                           <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 166, 35, 0.2)', color: '#f5a623', fontWeight: 600, border: '1px solid rgba(245, 166, 35, 0.3)' }}>

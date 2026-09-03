@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004")
     lyria_music_model: str = os.getenv("LYRIA_MUSIC_MODEL", "lyria-3-pro-preview")
     lyria_music_clip_model: str = os.getenv("LYRIA_MUSIC_CLIP_MODEL", "lyria-3-clip-preview")
-    veo_video_model: str = os.getenv("VEO_VIDEO_MODEL", "veo-2.0-generate-001")
+    veo_video_model: str = os.getenv("VEO_VIDEO_MODEL", "veo-3.1-generate-001")
 
     # ── Server ────────────────────────────────────────────────────────
     backend_host: str = "0.0.0.0"
@@ -69,6 +69,13 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"
+
+    def model_post_init(self, __context):
+        # Anchor relative paths to backend directory so scripts run from any CWD resolve correctly
+        for field in ["sqlite_db_path", "chroma_persist_dir", "output_images_dir", "output_audio_dir", "output_videos_dir"]:
+            val = getattr(self, field, None)
+            if val and not Path(val).is_absolute():
+                setattr(self, field, str((_backend_dir / val).resolve()))
 
     def ensure_directories(self):
         """Create all required output and data directories."""

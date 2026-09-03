@@ -17,45 +17,199 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Available voices for character assignment
-# These are the valid Gemini TTS voice options
-AVAILABLE_VOICES = [
-    "Aoede", "Charon", "Fenrir", "Kore", "Puck",
-]
+import re
+from typing import Optional, Any, Tuple
 
-# Track voice assignments per project to keep consistent
+# Available voices for character assignment
+# Valid Gemini TTS voice options classified by voice characteristics
+FEMALE_VOICES = ["Aoede", "Kore"]
+MALE_VOICES = ["Charon", "Fenrir", "Puck"]
+AVAILABLE_VOICES = FEMALE_VOICES + MALE_VOICES
+
+# Track voice assignments per project in memory
 _voice_assignments: dict[str, dict[str, str]] = {}  # project_id → {character → voice}
 
 
+def normalize_character_name(name: str) -> str:
+    """
+    Normalizes a dialogue character name by removing parentheticals,
+    voice-over notations, off-screen markers, and trailing numbers.
+    E.g.:
+      "OPERATIVE KAI (V.O.)" -> "OPERATIVE KAI"
+      "ELENA (CONT'D)" -> "ELENA"
+      "GUARD #1 (O.S.)" -> "GUARD #1"
+      "ELENA VANCE" -> "ELENA VANCE"
+    """
+    if not name:
+        return ""
+    cleaned = re.sub(r"\s*\([^)]*\)", "", name).strip()
+    return cleaned.upper()
+
+
+def find_matching_character(cleaned_name: str, characters: dict[str, Any]) -> Tuple[Optional[str], Optional[Any]]:
+    """
+    Finds a Character object in the Character Bible using token matching.
+    Returns (canon_name, Character).
+    """
+    if not cleaned_name or not characters:
+        return None, None
+
+    # 1. Exact match
+    if cleaned_name in characters:
+        return cleaned_name, characters[cleaned_name]
+
+    # 2. Case-insensitive match
+    for cname, cobj in characters.items():
+        if cname.upper() == cleaned_name.upper():
+            return cname, cobj
+
+    # 3. Token containment (e.g. "ELENA" in "ELENA VANCE", or "KAI" in "OPERATIVE KAI")
+    cleaned_tokens = set(re.findall(r"\w+", cleaned_name.upper()))
+    for cname, cobj in characters.items():
+        bible_tokens = set(re.findall(r"\w+", cname.upper()))
+        if cleaned_tokens.issubset(bible_tokens) or bible_tokens.issubset(cleaned_tokens):
+            return cname, cobj
+
+    # 4. Substring match
+    for cname, cobj in characters.items():
+        if cleaned_name.upper() in cname.upper() or cname.upper() in cleaned_name.upper():
+            return cname, cobj
+
+    return None, None
+
+
+def infer_character_gender(char_name: str, char_obj: Optional[Any] = None) -> str:
+    """
+    Infers gender ('female' or 'male') from Character Bible or name heuristics.
+    """
+    if char_obj:
+        if getattr(char_obj, "gender", None):
+            g = str(char_obj.gender).lower()
+            if "fem" in g or "woman" in g or "girl" in g:
+                return "female"
+            if "male" in g or "man" in g or "boy" in g:
+                return "male"
+
+        text_corpus = " ".join([
+            getattr(char_obj, "visual_description", "") or "",
+            getattr(char_obj, "description", "") or "",
+            getattr(char_obj, "voice_notes", "") or "",
+            " ".join(getattr(char_obj, "traits", []) or []),
+        ]).lower()
+
+        female_signals = len(re.findall(r"\b(she|her|hers|woman|female|girl|mother|daughter|sister|heroine|lady|actress)\b", text_corpus))
+        male_signals = len(re.findall(r"\b(he|him|his|man|male|guy|father|son|brother|hero|gentleman|operative|detective|actor)\b", text_corpus))
+
+        if female_signals > male_signals:
+            return "female"
+        elif male_signals > female_signals:
+            return "male"
+
+    lower = char_name.lower()
+    female_names = {"elena", "sarah", "mary", "anna", "kate", "lucy", "jane", "clara", "maria", "emma", "olivia", "eva", "sophia", "mia", "isabella", "woman", "girl"}
+    male_names = {"kai", "john", "david", "silas", "mark", "james", "michael", "william", "alex", "robert", "thomas", "julian", "vance", "operator", "operative", "man", "guy"}
+
+    tokens = set(re.findall(r"\w+", lower))
+    if tokens & female_names:
+        return "female"
+    if tokens & male_names:
+        return "male"
+
+    return "male"
+
+
 async def _assign_voice(project_id: str, character_name: str) -> str:
-    """Assign a consistent voice to a character, prioritizing their Character Bible voice_notes."""
-    if project_id not in _voice_assignments:
+    """
+    Assign a consistent, gender-appropriate voice to a character,
+    prioritizing Character Bible voice notes, and persistently storing in SQLite.
+    """
+    norm_name = normalize_character_name(character_name)
+
+    state = None
+    if project_id:
+        from tools.script_state import _get_state, _save_state
+        try:
+            state = await _get_state(project_id)
+            if state.voice_assignments is None:
+                state.voice_assignments = {}
+        except Exception as e:
+            logger.warning(f"[TTS] Could not load state for project {project_id}: {e}")
+
+    # 1. Check persistent state voice assignments first
+    if state and state.voice_assignments:
+        if character_name in state.voice_assignments:
+            return state.voice_assignments[character_name]
+        if norm_name in state.voice_assignments:
+            return state.voice_assignments[norm_name]
+
+    # 2. Check in-memory fallback
+    if project_id in _voice_assignments:
+        if character_name in _voice_assignments[project_id]:
+            return _voice_assignments[project_id][character_name]
+        if norm_name in _voice_assignments[project_id]:
+            return _voice_assignments[project_id][norm_name]
+    else:
         _voice_assignments[project_id] = {}
 
-    assignments = _voice_assignments[project_id]
-    if character_name not in assignments:
-        # First, try to get the voice from the character bible
-        from tools.script_state import _get_state
-        state = await _get_state(project_id)
-        char = state.characters.get(character_name)
-        
-        chosen_voice = None
-        if char and char.voice_notes:
-            notes = char.voice_notes.lower()
-            for v in AVAILABLE_VOICES:
-                if v.lower() in notes:
-                    chosen_voice = v
-                    break
+    # 3. Match against Character Bible
+    char_obj = None
+    canon_name = None
+    if state and state.characters:
+        canon_name, char_obj = find_matching_character(norm_name, state.characters)
+        if canon_name and canon_name in state.voice_assignments:
+            voice = state.voice_assignments[canon_name]
+            state.voice_assignments[character_name] = voice
+            state.voice_assignments[norm_name] = voice
+            _voice_assignments[project_id][character_name] = voice
+            _voice_assignments[project_id][norm_name] = voice
+            await _save_state(project_id)
+            return voice
 
-        # Fallback to a random unassigned voice
-        if not chosen_voice:
-            used_voices = set(assignments.values())
-            available = [v for v in AVAILABLE_VOICES if v not in used_voices]
-            chosen_voice = available[0] if available else AVAILABLE_VOICES[len(assignments) % len(AVAILABLE_VOICES)]
-            
-        assignments[character_name] = chosen_voice
+    # 4. Check explicit voice notes in bible
+    chosen_voice = None
+    if char_obj and char_obj.voice_notes:
+        notes = char_obj.voice_notes.lower()
+        for v in AVAILABLE_VOICES:
+            if v.lower() in notes:
+                chosen_voice = v
+                break
 
-    return assignments[character_name]
+    # 5. Determine gender and select appropriate voice pool
+    gender = infer_character_gender(norm_name, char_obj)
+    gender_pool = FEMALE_VOICES if gender == "female" else MALE_VOICES
+
+    if not chosen_voice:
+        used_voices = set()
+        if state and state.voice_assignments:
+            used_voices.update(state.voice_assignments.values())
+        if project_id in _voice_assignments:
+            used_voices.update(_voice_assignments[project_id].values())
+
+        available_in_pool = [v for v in gender_pool if v not in used_voices]
+        if available_in_pool:
+            chosen_voice = available_in_pool[0]
+        else:
+            count_gender = sum(1 for v in used_voices if v in gender_pool)
+            chosen_voice = gender_pool[count_gender % len(gender_pool)]
+
+    # 6. Save and persist assignment
+    if state:
+        state.voice_assignments[character_name] = chosen_voice
+        state.voice_assignments[norm_name] = chosen_voice
+        if canon_name:
+            state.voice_assignments[canon_name] = chosen_voice
+        try:
+            await _save_state(project_id)
+        except Exception as se:
+            logger.warning(f"[TTS] Failed to persist voice assignment to state: {se}")
+
+    _voice_assignments[project_id][character_name] = chosen_voice
+    _voice_assignments[project_id][norm_name] = chosen_voice
+    if canon_name:
+        _voice_assignments[project_id][canon_name] = chosen_voice
+
+    logger.info(f"[TTS] Assigned voice '{chosen_voice}' ({gender}) to character '{character_name}' (canon: '{canon_name}')")
+    return chosen_voice
 
 
 async def perform_per_speaker_dialogue_tts(
@@ -270,11 +424,19 @@ async def perform_table_read(project_id: str, scene_json: str) -> str:
             except Exception as auto_v_err:
                 logger.warning(f"[TTS] Auto-merge into existing video skipped: {auto_v_err}")
 
+        audio_url = f"/api/media/audio/{filename}"
+        if project_id and scene_number:
+            try:
+                from tools.script_state import attach_media_to_scene
+                await attach_media_to_scene(project_id, scene_number, "table_read_audio", audio_url)
+            except Exception as att_err:
+                logger.warning(f"[TTS] Could not attach table_read_audio to scene: {att_err}")
+
         return json.dumps({
             "success": True,
             "audio_path": str(filepath),
             "filename": filename,
-            "url": f"/api/media/audio/{filename}",
+            "url": audio_url,
             "voice_assignments": voice_map,
             "duration_estimate_seconds": total_duration,
             "character_count": len(voice_map),
