@@ -42,24 +42,24 @@ export function TopBar({ onToggleSidebar, view, onBackToDashboard, projectTitle,
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {connected ? '🟢 Live' : '🔴 Offline'}
           </span>
-          {chHealth && (
+          {chHealth?.clickhouse && (
             <span
               className={`ch-status-badge ch-status-badge--${
-                chHealth.clickhouse.status === 'connected'
+                chHealth.clickhouse?.status === 'connected'
                   ? 'connected'
-                  : chHealth.clickhouse.status === 'not_configured'
+                  : chHealth.clickhouse?.status === 'not_configured'
                   ? 'fallback'
                   : 'error'
               }`}
               title={
-                chHealth.clickhouse.status === 'connected'
-                  ? `ClickHouse: ${chHealth.clickhouse.host} — ${chHealth.clickhouse.scenes_indexed ?? 0} scenes`
-                  : chHealth.clickhouse.status === 'not_configured'
+                chHealth.clickhouse?.status === 'connected'
+                  ? `ClickHouse: ${chHealth.clickhouse?.host} — ${chHealth.clickhouse?.scenes_indexed ?? 0} scenes`
+                  : chHealth.clickhouse?.status === 'not_configured'
                   ? 'ClickHouse not configured — using local ChromaDB'
-                  : `ClickHouse error: ${chHealth.clickhouse.error}`
+                  : `ClickHouse error: ${chHealth.clickhouse?.error}`
               }
             >
-              {chHealth.clickhouse.status === 'connected' ? '🟢' : chHealth.clickhouse.status === 'not_configured' ? '🟡' : '🔴'}
+              {chHealth.clickhouse?.status === 'connected' ? '🟢' : chHealth.clickhouse?.status === 'not_configured' ? '🟡' : '🔴'}
               {' '}ClickHouse
             </span>
           )}

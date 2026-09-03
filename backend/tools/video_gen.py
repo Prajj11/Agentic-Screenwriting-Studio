@@ -78,6 +78,23 @@ def _escape_drawtext(text: str, max_length: int = 80) -> str:
     return clean
 
 
+def _get_media_duration(file_path: Path | str) -> float:
+    """Extract media duration in seconds using FFmpeg."""
+    ffmpeg_exe = _get_ffmpeg_path()
+    if not ffmpeg_exe:
+        return 0.0
+    try:
+        cmd = [ffmpeg_exe, "-i", str(file_path)]
+        res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
+        import re
+        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", res.stderr)
+        if m:
+            return int(m.group(1))*3600 + int(m.group(2))*60 + float(m.group(3))
+    except Exception:
+        pass
+    return 0.0
+
+
 def merge_video_with_audio(
     video_path: Path | str,
     audio_path: Path | str,
@@ -87,8 +104,8 @@ def merge_video_with_audio(
     """
     Merge a dialogue audio track (and optional background soundtrack) into a video MP4.
 
-    If the video clip is shorter than the dialogue audio, the video loops smoothly
-    using `-stream_loop -1` so the entire vocal performance is played over the video.
+    If video duration is equal to or longer than the dialogue audio, plays the video
+    naturally without looping. Only loops if the video is strictly shorter than the vocal track.
     """
     ffmpeg_exe = _get_ffmpeg_path()
     if not ffmpeg_exe:
@@ -107,11 +124,18 @@ def merge_video_with_audio(
         st_path = Path(soundtrack_path) if soundtrack_path else None
         has_soundtrack = st_path is not None and st_path.exists()
 
+        # Check media durations to avoid repeating video if it already covers the audio
+        v_dur = _get_media_duration(v_path)
+        a_dur = _get_media_duration(a_path)
+        should_loop = (v_dur > 0 and a_dur > 0 and v_dur < (a_dur - 0.5))
+
+        v_input_args = ["-stream_loop", "-1", "-i", str(v_path)] if should_loop else ["-i", str(v_path)]
+
         if has_soundtrack:
             # Mix dialogue (100% volume) and background score (22% volume)
             cmd = [
                 ffmpeg_exe, "-y",
-                "-stream_loop", "-1", "-i", str(v_path),
+                *v_input_args,
                 "-i", str(a_path),
                 "-stream_loop", "-1", "-i", str(st_path),
                 "-filter_complex",
@@ -131,7 +155,7 @@ def merge_video_with_audio(
             # Only dialogue audio
             cmd = [
                 ffmpeg_exe, "-y",
-                "-stream_loop", "-1", "-i", str(v_path),
+                *v_input_args,
                 "-i", str(a_path),
                 "-map", "0:v:0",
                 "-map", "1:a:0",
@@ -145,7 +169,7 @@ def merge_video_with_audio(
                 str(out_path),
             ]
 
-        logger.info(f"[AudioMerge] Running FFmpeg audio-video merge on {v_path.name} + {a_path.name}...")
+        logger.info(f"[AudioMerge] Merging {v_path.name} ({v_dur:.1f}s, loop={should_loop}) + {a_path.name} ({a_dur:.1f}s)...")
         proc = subprocess.run(cmd, capture_output=True, timeout=90)
         if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 1000:
             logger.info(f"[AudioMerge] Successfully merged video with dialogue -> {out_path} ({out_path.stat().st_size} bytes)")
@@ -516,7 +540,122 @@ async def generate_multi_shot_dialogue_video(
     })
 
 
-# ── Google Veo 2.0 Generative Video Engine (Vertex AI) ────────────────
+# ── Google Veo 3.1 Generative Video Engine (Vertex AI) ────────────────
+
+async def _generate_single_veo_clip(
+    client,
+    model_used: str,
+    prompt: str,
+    output_path: Path,
+    duration_seconds: int = 8,
+    shot_index: int = 1,
+    max_polls: int = 24,
+    poll_interval: int = 10,
+) -> bool:
+    """Helper to submit and poll a single Google Veo clip on Vertex AI."""
+    from google.genai import types
+    from config import settings
+
+    logger.info(f"[VeoShot {shot_index}] Submitting generation ({duration_seconds}s, model={model_used})...")
+    try:
+        operation = client.models.generate_videos(
+            model=model_used,
+            source=types.GenerateVideosSource(
+                prompt=prompt[:1500],
+            ),
+            config=types.GenerateVideosConfig(
+                person_generation="ALLOW_ADULT",
+                aspect_ratio="16:9",
+                number_of_videos=1,
+                duration_seconds=duration_seconds,
+            ),
+        )
+
+        for i in range(max_polls):
+            await asyncio.sleep(poll_interval)
+            try:
+                operation = client.operations.get(operation)
+            except Exception as poll_err:
+                logger.warning(f"[VeoShot {shot_index}] Poll {i+1} check: {poll_err}")
+                continue
+
+            is_done = getattr(operation, "done", False)
+            logger.info(f"[VeoShot {shot_index}] Polling {i+1}/{max_polls}: done={is_done}")
+            if is_done:
+                break
+
+        is_done = getattr(operation, "done", False)
+        if is_done:
+            response = getattr(operation, "response", None)
+            if response:
+                generated_videos = getattr(response, "generated_videos", None)
+                if generated_videos and len(generated_videos) > 0:
+                    video_obj = generated_videos[0].video
+                    video_bytes = getattr(video_obj, "video_bytes", None)
+                    if video_bytes:
+                        with open(output_path, "wb") as f:
+                            f.write(video_bytes)
+                        logger.info(f"[VeoShot {shot_index}] Saved: {output_path} ({len(video_bytes)} bytes)")
+                        return True
+
+                    video_uri = getattr(video_obj, "uri", None)
+                    if video_uri:
+                        try:
+                            from google.cloud import storage
+                            if video_uri.startswith("gs://"):
+                                parts = video_uri[5:].split("/", 1)
+                                bucket_name = parts[0]
+                                blob_name = parts[1] if len(parts) > 1 else ""
+                                storage_client = storage.Client(project=settings.gcp_project_id)
+                                bucket = storage_client.bucket(bucket_name)
+                                blob = bucket.blob(blob_name)
+                                blob.download_to_filename(str(output_path))
+                                logger.info(f"[VeoShot {shot_index}] Downloaded from GCS: {output_path}")
+                                return True
+                        except Exception as gcs_err:
+                            logger.warning(f"[VeoShot {shot_index}] GCS download error: {gcs_err}")
+
+            err = getattr(operation, "error", None)
+            logger.warning(f"[VeoShot {shot_index}] Finished with error: {err}")
+            return False
+        else:
+            logger.warning(f"[VeoShot {shot_index}] Timed out after polling")
+            return False
+    except Exception as e:
+        logger.warning(f"[VeoShot {shot_index}] Exception: {e}")
+        return False
+
+
+def _concat_video_clips(clip_paths: list[Path], output_path: Path) -> bool:
+    """Concatenate multiple video MP4 clips into a single continuous video with FFmpeg."""
+    ffmpeg_exe = _get_ffmpeg_path()
+    if not ffmpeg_exe or not clip_paths:
+        return False
+    if len(clip_paths) == 1:
+        shutil.copyfile(clip_paths[0], output_path)
+        return True
+
+    concat_txt = output_path.parent / f"concat_{uuid.uuid4().hex[:6]}.txt"
+    try:
+        with open(concat_txt, "w", encoding="utf-8") as f:
+            for c in clip_paths:
+                f.write(f"file '{c.resolve().as_posix()}'\n")
+        cmd = [
+            ffmpeg_exe, "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_txt),
+            "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+        proc = subprocess.run(cmd, capture_output=True, timeout=60)
+        concat_txt.unlink(missing_ok=True)
+        return proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000
+    except Exception as e:
+        logger.warning(f"[Concat] Error: {e}")
+        concat_txt.unlink(missing_ok=True)
+        return False
+
 
 async def generate_veo_scene_video(
     scene_number: int,
@@ -525,10 +664,17 @@ async def generate_veo_scene_video(
     character_visuals: str = "",
     characters: str = "",
     project_id: str = "",
+    target_duration: float = 8.0,
 ) -> tuple[bool, Path | None, str]:
     """
-    Generate real 24fps fluid cinematic video using Google Veo 2.0 via Vertex AI.
-    Returns (success, filepath, error_or_model_name).
+    Generate real 24fps fluid cinematic video using Google Veo 3.1 via Vertex AI.
+    
+    Supports multi-shot sequential generation for durations > 8s (e.g. 16s, 24s):
+    - When target_duration >= 20.0s: Generates 3 distinct 8s camera setups in parallel (24s total).
+    - When target_duration >= 11.0s: Generates 2 distinct 8s camera setups in parallel (16s total).
+    - Otherwise: Generates 1 comprehensive 8s cinematic shot.
+    
+    All shots are stitched into a continuous sequence with zero looping!
     """
     from config import settings
 
@@ -538,16 +684,9 @@ async def generate_veo_scene_video(
     filepath = output_dir / filename
     model_used = settings.veo_video_model
 
-    # Build prompt
-    prompt_parts = [
-        f"Cinematic photorealistic movie scene performance for Scene {scene_number}.",
-        f"Setting & Action: {scene_description}",
-    ]
-
-    appearance_block = _build_character_appearance_block(character_visuals)
-    if appearance_block:
-        prompt_parts.append(appearance_block)
-    elif project_id:
+    # Determine character visuals context
+    char_block = _build_character_appearance_block(character_visuals)
+    if not char_block and project_id:
         try:
             from tools.script_state import _get_state
             from tools.tts import normalize_character_name, find_matching_character
@@ -564,105 +703,125 @@ async def generate_veo_scene_video(
                 if c_obj and c_obj.visual_description:
                     char_lines.append(f"- {canon_name or cname}: {c_obj.visual_description}")
             if char_lines:
-                prompt_parts.append("Character Visuals & Acting Guide:\n" + "\n".join(char_lines))
+                char_block = "Character Visuals & Acting Guide:\n" + "\n".join(char_lines)
             elif characters:
-                prompt_parts.append(f"Characters: {characters}")
+                char_block = f"Characters: {characters}"
         except Exception as e:
             logger.warning(f"[Veo] Could not load character visuals from state: {e}")
             if characters:
-                prompt_parts.append(f"Characters: {characters}")
-    elif characters:
-        prompt_parts.append(f"Characters: {characters}")
+                char_block = f"Characters: {characters}"
+    elif not char_block and characters:
+        char_block = f"Characters: {characters}"
 
+    # Determine shot count: 8s per clip
+    if target_duration >= 20.0:
+        num_shots = 3
+    elif target_duration >= 11.0:
+        num_shots = 2
+    else:
+        num_shots = 1
+
+    logger.info(f"[Veo Director] Directing Scene {scene_number} ({target_duration:.1f}s requested -> {num_shots} x 8s shots = {num_shots * 8}s total)...")
+
+    # Build prompts for each shot setup
+    shot_prompts = []
+    base_info = f"Cinematic photorealistic movie scene performance for Scene {scene_number}.\nSetting & Action: {scene_description}\n"
+    if char_block:
+        base_info += f"{char_block}\n"
     if dialogue_context:
-        prompt_parts.append(f"Performance & Acting: Characters speaking and emotionally reacting to the scene: {dialogue_context}")
+        base_info += f"Performance & Acting: Characters speaking and emotionally reacting to the scene: {dialogue_context}\n"
 
-    prompt_parts.append(
-        "Cinematography & Motion: Dynamic physical movement, character gestures and emotional body language, authentic character interaction, steadycam tracking shot, natural kinetic blocking, rich facial micro-expressions, cinematic lighting, 24fps filmic motion blur, 16:9 widescreen aspect ratio."
-    )
-
-    prompt = "\n".join(prompt_parts)
+    if num_shots == 1:
+        shot_prompts.append(
+            base_info +
+            "Cinematography & Motion: Steadycam dynamic tracking shot, continuous physical movement, character gestures and interactions, natural kinetic blocking, rich facial micro-expressions, cinematic lighting, 24fps filmic motion blur, 16:9 widescreen aspect ratio."
+        )
+    elif num_shots == 2:
+        shot_prompts.append(
+            base_info +
+            "Cinematography & Angle (Shot 1 of 2 - Establishing Action): Dynamic medium-wide establishing tracking shot. Characters active in foreground environment, starting physical action with tools/consoles, steadycam movement pushing in, atmospheric volumetric lighting, 24fps filmic motion blur, 16:9 widescreen."
+        )
+        shot_prompts.append(
+            base_info +
+            "Cinematography & Angle (Shot 2 of 2 - Reverse Angle & Progression): Over-the-shoulder medium reverse tracking shot focusing on reaction, counter-action, secondary character operating controls/weapons, emotional acting and physical intensity, dramatic contrast lighting, 24fps filmic motion blur, 16:9 widescreen."
+        )
+    else:
+        shot_prompts.append(
+            base_info +
+            "Cinematography & Angle (Shot 1 of 3 - Opening Action): Medium-wide establishing tracking shot. High kinetic energy, physical setup in the environment, character operating tools/machinery, steadycam push-in, 24fps filmic motion blur, 16:9 widescreen."
+        )
+        shot_prompts.append(
+            base_info +
+            "Cinematography & Angle (Shot 2 of 3 - Reaction & Tension): Reverse angle medium shot. Emotional reaction, secondary character interacting with displays/communications, rising stakes, dramatic volumetric light, 24fps filmic motion blur, 16:9 widescreen."
+        )
+        shot_prompts.append(
+            base_info +
+            "Cinematography & Angle (Shot 3 of 3 - Climax Breakthrough): Low-angle dynamic close-up kinetic shot. High physical intensity, sparks/smoke, decisive action/breach, powerful facial micro-expressions, 24fps filmic motion blur, 16:9 widescreen."
+        )
 
     try:
         from google import genai
-        from google.genai import types
-
         client = genai.Client(
             vertexai=True,
             project=settings.gcp_project_id,
             location=getattr(settings, "gcp_video_location", settings.gcp_location or "us-central1"),
         )
 
-        logger.info(f"[Veo] Initiating generative video generation for Scene {scene_number} with model={model_used}...")
+        shot_paths = [
+            output_dir / f"scene_{scene_number}_veo_shot{i+1}_{uuid.uuid4().hex[:6]}.mp4"
+            for i in range(num_shots)
+        ]
 
-        operation = client.models.generate_videos(
-            model=model_used,
-            source=types.GenerateVideosSource(
-                prompt=prompt[:1500],
-            ),
-            config=types.GenerateVideosConfig(
-                person_generation="ALLOW_ADULT",
-                aspect_ratio="16:9",
-                number_of_videos=1,
-                duration_seconds=6,
-            ),
-        )
-
-        logger.info("[Veo] Operation submitted. Polling for completion...")
-
-        max_polls = 20
-        poll_interval = 15
-        for i in range(max_polls):
-            await asyncio.sleep(poll_interval)
-            try:
-                operation = client.operations.get(operation)
-            except Exception as poll_err:
-                logger.warning(f"[Veo] Poll {i+1} check: {poll_err}")
-                continue
-
-            is_done = getattr(operation, "done", False)
-            logger.info(f"[Veo] Polling {i+1}/{max_polls}: done={is_done}")
-            if is_done:
-                break
-
-        is_done = getattr(operation, "done", False)
-        if is_done:
-            response = getattr(operation, "response", None)
-            if response:
-                generated_videos = getattr(response, "generated_videos", None)
-                if generated_videos and len(generated_videos) > 0:
-                    video_obj = generated_videos[0].video
-                    video_bytes = getattr(video_obj, "video_bytes", None)
-                    if video_bytes:
-                        with open(filepath, "wb") as f:
-                            f.write(video_bytes)
-                        logger.info(f"[Veo 2.0] Video successfully generated and saved: {filepath} ({len(video_bytes)} bytes)")
-                        return True, filepath, model_used
-
-                    video_uri = getattr(video_obj, "uri", None)
-                    if video_uri:
-                        try:
-                            from google.cloud import storage
-                            if video_uri.startswith("gs://"):
-                                parts = video_uri[5:].split("/", 1)
-                                bucket_name = parts[0]
-                                blob_name = parts[1] if len(parts) > 1 else ""
-                                storage_client = storage.Client(project=settings.gcp_project_id)
-                                bucket = storage_client.bucket(bucket_name)
-                                blob = bucket.blob(blob_name)
-                                blob.download_to_filename(str(filepath))
-                                logger.info(f"[Veo 2.0] Downloaded generated video from GCS: {filepath}")
-                                return True, filepath, model_used
-                        except Exception as gcs_err:
-                            logger.warning(f"[Veo 2.0] GCS download error: {gcs_err}")
-
-            err = getattr(operation, "error", None)
-            return False, None, f"Veo operation finished with error: {err}"
+        if num_shots == 1:
+            ok = await _generate_single_veo_clip(
+                client=client,
+                model_used=model_used,
+                prompt=shot_prompts[0],
+                output_path=filepath,
+                duration_seconds=8,
+                shot_index=1,
+            )
+            if ok and filepath.exists() and filepath.stat().st_size > 1000:
+                return True, filepath, model_used
+            return False, None, "Veo single shot failed"
         else:
-            return False, None, "Veo operation timed out after polling window"
+            # Parallel multi-shot generation on Vertex AI
+            logger.info(f"[Veo Director] Launching {num_shots} Veo shots in parallel on Vertex AI...")
+            tasks = [
+                _generate_single_veo_clip(
+                    client=client,
+                    model_used=model_used,
+                    prompt=shot_prompts[i],
+                    output_path=shot_paths[i],
+                    duration_seconds=8,
+                    shot_index=i + 1,
+                )
+                for i in range(num_shots)
+            ]
+            results = await asyncio.gather(*tasks)
+
+            successful_clips = [
+                shot_paths[i]
+                for i, ok in enumerate(results)
+                if ok and shot_paths[i].exists() and shot_paths[i].stat().st_size > 1000
+            ]
+
+            if len(successful_clips) > 1:
+                logger.info(f"[Veo Director] Successfully generated {len(successful_clips)}/{num_shots} shots. Stitching into continuous {len(successful_clips)*8}s sequence...")
+                ok_concat = _concat_video_clips(successful_clips, filepath)
+                for c in successful_clips:
+                    c.unlink(missing_ok=True)
+                if ok_concat and filepath.exists() and filepath.stat().st_size > 1000:
+                    return True, filepath, model_used
+            elif len(successful_clips) == 1:
+                logger.info("[Veo Director] 1 shot succeeded. Using single 8s clip...")
+                shutil.move(str(successful_clips[0]), str(filepath))
+                return True, filepath, model_used
+
+            return False, None, "Veo multi-shot generation failed"
 
     except Exception as e:
-        logger.warning(f"[Veo 2.0] Video generation request failed: {type(e).__name__}: {e}")
+        logger.warning(f"[Veo Director] Exception during generation: {e}")
         return False, None, str(e)
 
 
@@ -676,6 +835,7 @@ async def generate_scene_video(
     character_visuals: str = "",
     project_id: str = "",
     video_mode: str = "auto",
+    duration_seconds: int = 0,
 ) -> str:
     """
     Generate a cinematic video performance for a screenplay scene.
@@ -687,8 +847,9 @@ async def generate_scene_video(
         characters: Character names and descriptions (fallback).
         character_visuals: Character appearance spec JSON string (preferred).
         project_id: Project identifier for ScriptState registration.
-        video_mode: "auto" (tries Veo 2.0 then animatic), "veo" (forces Veo 2.0),
+        video_mode: "auto" (tries Veo 3.1 then animatic), "veo" (forces Veo 3.1),
                     or "animatic" (forces dynamic multi-shot animatic engine).
+        duration_seconds: Target video duration (0 = auto-detects from dialogue audio duration).
 
     Returns:
         JSON string containing the generated video path, URL, and metadata.
@@ -701,6 +862,25 @@ async def generate_scene_video(
         from tools.script_state import _active_states
         if _active_states:
             project_id = list(_active_states.keys())[-1]
+
+    # Calculate target duration from audio if available
+    target_dur = float(duration_seconds)
+    if target_dur <= 0 and project_id:
+        try:
+            from tools.script_state import _get_state
+            state = await _get_state(project_id)
+            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+            if scene and scene.table_read_audio:
+                fname = scene.table_read_audio.split("/")[-1]
+                cand = Path(settings.output_audio_dir) / fname
+                if cand.exists():
+                    target_dur = _get_media_duration(cand)
+            if target_dur <= 0 and scene and scene.dialogue:
+                target_dur = float(max(8, len(scene.dialogue) * 3.5))
+        except Exception as e:
+            logger.warning(f"[VideoDirector] Error calculating audio duration: {e}")
+    if target_dur <= 0:
+        target_dur = 16.0  # Default to cinematic 16s multi-shot scene!
 
     # ── Mode Branch: Forced Animatic ─────────────────────────────────
     if video_mode.lower() == "animatic" and project_id:
@@ -729,6 +909,7 @@ async def generate_scene_video(
             character_visuals=character_visuals,
             characters=characters,
             project_id=project_id,
+            target_duration=target_dur,
         )
 
         if veo_success and veo_filepath and veo_filepath.exists():

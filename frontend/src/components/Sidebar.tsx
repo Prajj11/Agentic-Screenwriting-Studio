@@ -98,10 +98,10 @@ export function Sidebar({ isOpen, onClose, onNavigateDashboard, onAction, isLoad
             <span>{connected ? '🟢' : '🔴'}</span>
             <span>{connected ? 'Connected' : 'Offline'}</span>
           </div>
-          {chHealth && (
+          {chHealth?.clickhouse && (
             <div className="sidebar__status">
               <span>
-                {chHealth.clickhouse.status === 'connected' ? '🟢' : chHealth.clickhouse.status === 'not_configured' ? '🟡' : '🔴'}
+                {chHealth.clickhouse?.status === 'connected' ? '🟢' : chHealth.clickhouse?.status === 'not_configured' ? '🟡' : '🔴'}
               </span>
               <span>ClickHouse</span>
             </div>

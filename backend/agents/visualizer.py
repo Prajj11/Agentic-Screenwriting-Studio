@@ -92,7 +92,7 @@ When you encounter a character that has NEVER had a portrait generated:
 - `save_character_visual`: Lock down a character's appearance or save a reference portrait
 - `generate_character_portrait`: Generate a canonical reference portrait for a character
 - `generate_mood_board`: Generate the scene visualization (pass character_visuals!)
-- `generate_scene_video`: Generate a cinematic video performance of a scene with characters and synchronized dialogue audio! Pass scene_number, scene_description, dialogue_context, character_visuals, project_id, and video_mode="veo" (uses Google Veo 3.1 on Vertex AI for real 24fps cinematic video with physical movement, acting, and steadycam tracking). ALWAYS use video_mode="veo" when asked to generate a video or movie clip. Only use video_mode="animatic" if the user explicitly requests an animatic or storyboard.
+- `generate_scene_video`: Generate a cinematic video performance of a scene with characters and synchronized dialogue audio! Pass scene_number, scene_description, dialogue_context, character_visuals, project_id, video_mode="veo" (uses Google Veo 3.1 on Vertex AI for real 24fps cinematic video with physical movement, acting, and steadycam tracking), and optional duration_seconds (e.g. 16 or 24 to generate multi-shot parallel film sequences that don't loop). ALWAYS use video_mode="veo" when asked to generate a video or movie clip. Only use video_mode="animatic" if the user explicitly requests an animatic or storyboard.
 - `attach_media_to_scene`: Save the generated image URL to the Script State (REQUIRED)
 """
 
