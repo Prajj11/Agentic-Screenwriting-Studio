@@ -73,17 +73,26 @@ export function ChatPanel({ messages, isLoading, onSend, onSelectTab }: ChatPane
 
                   {/* Compact Image Media Badge */}
                   {msg.text.includes('/api/media/images/') && !msg.text.includes('/api/media/videos/') && (
-                    <div style={{ marginTop: 'var(--space-md)', padding: 'var(--space-sm) var(--space-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-accent)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+                    <div style={{ marginTop: 'var(--space-md)', padding: 'var(--space-sm) var(--space-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-accent)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>
                         <span>🖼️</span> Visual Concept Art Created
                       </div>
-                      <button
-                        className="sidebar__btn"
-                        style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.75rem', background: 'var(--surface-sunken)' }}
-                        onClick={() => onSelectTab?.('media')}
-                      >
-                        🖼️ View in Center Canvas
-                      </button>
+                      <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                        <button
+                          className="sidebar__btn"
+                          style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.75rem', background: 'var(--surface-sunken)' }}
+                          onClick={() => onSend("Generate a cinematic video for this scene")}
+                        >
+                          🎬 Generate Video
+                        </button>
+                        <button
+                          className="sidebar__btn"
+                          style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.75rem', background: 'var(--surface-sunken)' }}
+                          onClick={() => onSelectTab?.('media')}
+                        >
+                          🖼️ View in Center Canvas
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -115,6 +124,7 @@ export function ChatPanel({ messages, isLoading, onSend, onSelectTab }: ChatPane
                   <button className="sidebar__btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={() => onSend("Check continuity for the latest scene")}>🔍 Check Continuity</button>
                   <button className="sidebar__btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={() => onSend("Perform a Table Read of the latest scene")}>🎙️ Table Read</button>
                   <button className="sidebar__btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={() => onSend("Visualize the latest scene")}>🎨 Visualize Scene</button>
+                  <button className="sidebar__btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', minHeight: 'auto', background: 'var(--surface-sunken)', width: 'auto' }} onClick={() => onSend("Generate a cinematic video for the latest scene")}>🎬 Generate Video</button>
                 </div>
               )}
             </div>

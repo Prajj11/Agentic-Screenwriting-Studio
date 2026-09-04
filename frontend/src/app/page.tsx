@@ -380,7 +380,7 @@ export default function StudioPage() {
              {activeTab === 'beats' && (
                 <BeatSheet 
                   beats={beats}
-                  onDraftScene={(id) => handleSend(`Draft scene for beat ${id + 1}`)}
+                  onDraftScene={(beatNum) => handleSend(`Draft scene for beat ${beatNum}`)}
                   isLoading={isLoading}
                 />
              )}

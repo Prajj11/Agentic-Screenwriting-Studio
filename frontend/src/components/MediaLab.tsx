@@ -414,13 +414,22 @@ export function MediaLab({ projectId, scenes, characters = {}, mediaAnalyses = [
           <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginTop: '8px', maxWidth: '500px', margin: '8px auto 0' }}>
             Ask the <strong>Visualizer Agent</strong> in the chat to <em>&ldquo;Generate visual for Scene 1&rdquo;</em>, <em>&ldquo;Create character portrait for [Name]&rdquo;</em>, or <em>&ldquo;Perform table read&rdquo;</em> to populate this media gallery!
           </p>
-          <button
-            className="sidebar__btn"
-            style={{ width: 'auto', margin: 'var(--space-lg) auto 0', background: 'var(--accent-primary)', color: '#fff', padding: '0.5rem 1.2rem', fontSize: '0.85rem' }}
-            onClick={() => onAction('Generate visuals and concept art for scene 1')}
-          >
-            🎨 Ask Visualizer to Generate Scene Visuals
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'center', flexWrap: 'wrap', marginTop: 'var(--space-lg)' }}>
+            <button
+              className="sidebar__btn"
+              style={{ width: 'auto', background: 'var(--accent-primary)', color: '#fff', padding: '0.5rem 1.2rem', fontSize: '0.85rem' }}
+              onClick={() => onAction('Generate visuals and concept art for scene 1')}
+            >
+              🎨 Ask Visualizer to Generate Scene Visuals
+            </button>
+            <button
+              className="sidebar__btn"
+              style={{ width: 'auto', background: 'var(--surface-sunken)', border: '1px solid var(--border-accent)', padding: '0.5rem 1.2rem', fontSize: '0.85rem', color: '#34a853' }}
+              onClick={() => onAction('Generate cinematic video for Scene 1')}
+            >
+              🎬 Generate Scene Video (Veo 3.1)
+            </button>
+          </div>
         </div>
       )}
 
@@ -450,13 +459,20 @@ export function MediaLab({ projectId, scenes, characters = {}, mediaAnalyses = [
                       {s.mood_description}
                     </p>
                   )}
-                  <div style={{ marginTop: 'var(--space-md)', display: 'flex', gap: 'var(--space-xs)' }}>
+                  <div style={{ marginTop: 'var(--space-md)', display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
                     <button
                       className="sidebar__btn"
                       style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: 'var(--bg-secondary)' }}
                       onClick={() => onAction(`Re-generate visual concept for Scene ${s.scene_number}`)}
                     >
                       🔄 Re-generate Visual
+                    </button>
+                    <button
+                      className="sidebar__btn"
+                      style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: 'var(--surface-sunken)', color: '#34a853' }}
+                      onClick={() => onAction(`Generate cinematic Veo video for Scene ${s.scene_number}`)}
+                    >
+                      🎬 Generate Video
                     </button>
                   </div>
                 </div>

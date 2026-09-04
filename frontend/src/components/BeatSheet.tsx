@@ -49,7 +49,7 @@ export function BeatSheet({ beats, onDraftScene, isLoading }: BeatSheetProps) {
               <button 
                 className="sidebar__btn" 
                 style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)' }}
-                onClick={() => onDraftScene(beat.beat_number || index)}
+                onClick={() => onDraftScene(beat.beat_number ?? (index + 1))}
                 disabled={isLoading}
               >
                 ✍️ Draft Scene

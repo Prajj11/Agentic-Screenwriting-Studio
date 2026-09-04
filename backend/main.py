@@ -56,6 +56,12 @@ try:
 except ImportError:
     _GENAI_PATCH_AVAILABLE = False
 
+def _is_retryable_error(err_str: str) -> bool:
+    return any(term in err_str for term in [
+        "429", "too many requests", "quota",
+        "500", "502", "503", "504", "bad gateway", "service unavailable", "internal server error"
+    ])
+
 if _GENAI_PATCH_AVAILABLE:
     # Async patch
     _orig_async_generate_content = AsyncModels.generate_content
@@ -69,10 +75,10 @@ if _GENAI_PATCH_AVAILABLE:
                 return await _orig_async_generate_content(self, *args, **kwargs)
             except Exception as e:
                 err_str = str(e).lower()
-                if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if _is_retryable_error(err_str):
                     if attempt == retries - 1:
                         raise
-                    logging.getLogger("studio").warning(f"Rate limited (429). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                    logging.getLogger("studio").warning(f"Transient error ({e}). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
                     await asyncio.sleep(delay)
                     delay *= 2
                 else:
@@ -86,10 +92,10 @@ if _GENAI_PATCH_AVAILABLE:
                 return await _orig_async_generate_content_stream(self, *args, **kwargs)
             except Exception as e:
                 err_str = str(e).lower()
-                if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if _is_retryable_error(err_str):
                     if attempt == retries - 1:
                         raise
-                    logging.getLogger("studio").warning(f"Rate limited (429) in stream. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                    logging.getLogger("studio").warning(f"Transient stream error ({e}). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
                     await asyncio.sleep(delay)
                     delay *= 2
                 else:
@@ -109,10 +115,10 @@ if _GENAI_PATCH_AVAILABLE:
                 return _orig_generate_content(self, *args, **kwargs)
             except Exception as e:
                 err_str = str(e).lower()
-                if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                if _is_retryable_error(err_str):
                     if attempt == retries - 1:
                         raise
-                    logging.getLogger("studio").warning(f"Rate limited (429) in sync call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                    logging.getLogger("studio").warning(f"Transient sync call error ({e}). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
                     time.sleep(delay)
                     delay *= 2
                 else:
@@ -132,10 +138,10 @@ if _GENAI_PATCH_AVAILABLE:
                     return _orig_generate_images(self, *args, **kwargs)
                 except Exception as e:
                     err_str = str(e).lower()
-                    if "429" in err_str or "too many requests" in err_str or "quota" in err_str:
+                    if _is_retryable_error(err_str):
                         if attempt == retries - 1:
                             raise
-                        logging.getLogger("studio").warning(f"Rate limited (429) in images call. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
+                        logging.getLogger("studio").warning(f"Transient images error ({e}). Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
                         time.sleep(delay)
                         delay *= 2
                     else:

@@ -58,7 +58,12 @@ Follow proper industry screenplay formatting:
   - A clear goal (what the character wants)
   - Conflict (what's in their way)
   - A turn (something changes by the end)
-- You MUST generate a complete scene draft with clear character names and dialogue lines (even if they are just placeholders) before any table read can be performed. Do not output an empty scene or a scene without any dialogue lines.
+- **MANDATORY DIALOGUE REQUIREMENT**:
+  - Every drafted scene MUST have at least 4 to 8 lines of spoken dialogue structured in the `dialogue` array!
+  - NEVER output an empty `dialogue` array (`[]`). Table Read and the screenplay renderer rely directly on `dialogue`.
+  - If the scene features two or more characters, write an active verbal exchange with subtext and tension.
+  - If the beat describes a solitary character, DO NOT write a silent scene! Give them a phone call, radio/comms dispatch, AI assistant/intercom interaction, voice log recording, or an encounter with a contact/stranger so there is actual spoken dialogue to perform.
+  - DO NOT put dialogue lines only inside `action_lines`. Keep `action_lines` for visuals/direction, and place all spoken lines into the `dialogue` array with `character`, `line`, and optional `parenthetical`.
 
 ## CONTINUITY
 When drafting, identify new facts established in this scene:
@@ -89,8 +94,38 @@ This ensures characters look consistent across all scene illustrations.
 - `get_character_visuals_for_scene`: Get locked-down character appearance data for image consistency
 - `attach_media_to_scene`: Save a generated image URL to the scene
 
-After drafting, ALWAYS save the scene using add_scene_to_script.
-Provide the scene data as a JSON object with all required fields.
+## SAVING THE SCENE WITH `add_scene_to_script`
+When calling `add_scene_to_script(project_id=..., scene_json=...)`, always provide:
+- `scene_number`: integer (e.g. 1, 2) matching the requested scene
+- `beat_reference`: integer (e.g. 1, 2) matching the beat number from the beat sheet
+- `slugline`: standard slugline (e.g. "INT. AUDIO LAB - NIGHT")
+- `location`: location name (e.g. "AUDIO LAB")
+- `time_of_day`: "DAY" or "NIGHT"
+- `characters`: list of character names (e.g. ["ELARA REID", "MARK"])
+- `action_lines`: descriptive scene action lines
+- `dialogue`: array of objects with `character`, `line`, and optional `parenthetical`
+- `mood_description`: visual and emotional atmosphere
+- `continuity_facts`: array of objects with `description`, `characters_involved`, and `category` ("plot", "character", "prop", "location", "timeline")
+
+Example `scene_json`:
+{
+  "scene_number": 1,
+  "beat_reference": 1,
+  "slugline": "INT. AUDIO LAB - NIGHT",
+  "location": "AUDIO LAB",
+  "time_of_day": "NIGHT",
+  "characters": ["ELARA REID"],
+  "action_lines": "The sterile monitors glow blue in the dark room.",
+  "dialogue": [
+    {"character": "ELARA REID", "line": "Frequency locked at 1420 megahertz.", "parenthetical": "into headset"}
+  ],
+  "mood_description": "Tense and mysterious",
+  "continuity_facts": [
+    {"description": "Elara intercepts the broadcast during her solo night shift.", "characters_involved": ["ELARA REID"], "category": "plot"}
+  ]
+}
+
+After drafting, ALWAYS save the scene using `add_scene_to_script`.
 """
 
 

@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+import re
+from typing import Any, Optional
 
 from models.script_state import (
     ScriptState, Scene, Character, Beat, ContinuityFact, MediaAnalysis,
-    DialogueLine, SceneStatus, BeatStatus,
+    DialogueLine, SceneStatus, BeatStatus, ContinuityCategory,
     Genre, ScriptFormat, StructuralFramework,
     normalize_enum,
 )
@@ -77,7 +78,24 @@ async def get_beat_sheet(project_id: str) -> str:
     return json.dumps([b.model_dump() for b in state.beat_sheet], indent=2)
 
 
-async def save_beat_sheet(project_id: str, beats_json: str) -> str:
+def _parse_json_arg(arg: Any) -> Any:
+    """Safely parse a tool argument that might be a dict, list, or JSON string with markdown backticks."""
+    if isinstance(arg, (dict, list)):
+        return arg
+    if not isinstance(arg, str):
+        return arg
+    cleaned = arg.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+    return json.loads(cleaned)
+
+
+async def save_beat_sheet(project_id: str, beats_json: Any) -> str:
     """
     Save a new beat sheet to the Script State.
     Input: JSON array of beat objects with keys: beat_number, act, title, description,
@@ -85,8 +103,38 @@ async def save_beat_sheet(project_id: str, beats_json: str) -> str:
     """
     state = await _get_state(project_id)
     try:
-        beats_data = json.loads(beats_json)
-        state.beat_sheet = [Beat(**b) for b in beats_data]
+        beats_data = _parse_json_arg(beats_json)
+        if isinstance(beats_data, dict) and "beats" in beats_data:
+            beats_data = beats_data["beats"]
+        if not isinstance(beats_data, list):
+            return json.dumps({"success": False, "error": f"Expected JSON array of beats, got {type(beats_data)}"})
+
+        cleaned_beats = []
+        for i, b in enumerate(beats_data):
+            if not isinstance(b, dict):
+                continue
+            # Sanitize beat_number
+            if "beat_number" not in b or not b["beat_number"]:
+                b["beat_number"] = i + 1
+            elif isinstance(b["beat_number"], str):
+                digits = re.findall(r"\d+", b["beat_number"])
+                b["beat_number"] = int(digits[0]) if digits else i + 1
+
+            # Sanitize act (integer 1, 2, or 3)
+            raw_act = b.get("act", 1)
+            if isinstance(raw_act, str):
+                digits = re.findall(r"\d+", raw_act)
+                b["act"] = int(digits[0]) if digits else 1
+            elif not isinstance(raw_act, int):
+                b["act"] = 1
+
+            # Sanitize status if passed
+            if "status" in b and isinstance(b["status"], str):
+                b["status"] = _normalize_enum(b["status"], BeatStatus)
+
+            cleaned_beats.append(Beat(**b))
+
+        state.beat_sheet = cleaned_beats
         await _save_state(project_id)
         return json.dumps({"success": True, "beat_count": len(state.beat_sheet)})
     except Exception as e:
@@ -108,15 +156,20 @@ async def get_character_bible(project_id: str, character_name: str = "") -> str:
     return json.dumps({name: c.model_dump() for name, c in state.characters.items()}, indent=2)
 
 
-async def save_character(project_id: str, character_json: str) -> str:
+async def save_character(project_id: str, character_json: Any) -> str:
     """
     Add or update a character in the character bible.
     Input: JSON object with keys: name, description, traits, voice_notes, backstory.
     """
     state = await _get_state(project_id)
     try:
-        char_data = json.loads(character_json)
-        name = char_data["name"]
+        char_data = _parse_json_arg(character_json)
+        if not isinstance(char_data, dict):
+            return json.dumps({"success": False, "error": f"Expected character JSON object, got {type(char_data)}"})
+
+        name = char_data.get("name", "").strip()
+        if not name:
+            return json.dumps({"success": False, "error": "Character 'name' is required."})
 
         # Coerce comma-separated string → list (LLMs often send "a, b, c" instead of ["a","b","c"])
         if isinstance(char_data.get("traits"), str):
@@ -136,7 +189,7 @@ async def save_character(project_id: str, character_json: str) -> str:
         return json.dumps({"success": False, "error": str(e)})
 
 
-async def add_scene_to_script(project_id: str, scene_json: str) -> str:
+async def add_scene_to_script(project_id: str, scene_json: Any) -> str:
     """
     Add a new scene to the script. Also indexes it in ChromaDB for continuity RAG.
     Input: JSON object with keys: scene_number, beat_reference, slugline, location,
@@ -145,25 +198,150 @@ async def add_scene_to_script(project_id: str, scene_json: str) -> str:
     """
     state = await _get_state(project_id)
     try:
-        scene_data = json.loads(scene_json)
+        scene_data = _parse_json_arg(scene_json)
+        if not isinstance(scene_data, dict):
+            return json.dumps({"success": False, "error": f"Expected scene JSON object, got {type(scene_data)}"})
 
-        # Parse dialogue lines
+        # Sanitize scene_number
+        raw_scene_num = scene_data.get("scene_number")
+        if raw_scene_num is None or raw_scene_num == "":
+            scene_number = len(state.scenes) + 1
+        elif isinstance(raw_scene_num, int):
+            scene_number = raw_scene_num
+        else:
+            digits = re.findall(r"\d+", str(raw_scene_num))
+            scene_number = int(digits[0]) if digits else (len(state.scenes) + 1)
+        scene_data["scene_number"] = scene_number
+
+        # Sanitize beat_reference
+        raw_beat_ref = scene_data.get("beat_reference")
+        if raw_beat_ref is not None and raw_beat_ref != "":
+            if isinstance(raw_beat_ref, int):
+                scene_data["beat_reference"] = raw_beat_ref
+            else:
+                digits = re.findall(r"\d+", str(raw_beat_ref))
+                scene_data["beat_reference"] = int(digits[0]) if digits else None
+        else:
+            # Check if any beat in beat_sheet matches this scene number
+            if any(b.beat_number == scene_number for b in state.beat_sheet):
+                scene_data["beat_reference"] = scene_number
+            else:
+                scene_data["beat_reference"] = None
+
+        # Sanitize slugline / location / time_of_day
+        slug = scene_data.get("slugline", "").strip()
+        loc = scene_data.get("location", "").strip()
+        tod = scene_data.get("time_of_day", "").strip()
+        if slug and not loc:
+            parts = slug.replace("INT.", "").replace("EXT.", "").replace("INT/EXT.", "").split("-")
+            if parts:
+                loc = parts[0].strip()
+                if len(parts) > 1 and not tod:
+                    tod = parts[1].strip()
+        scene_data["location"] = loc or "LOCATION"
+        scene_data["time_of_day"] = tod or "DAY"
+        if not slug:
+            scene_data["slugline"] = f"INT. {scene_data['location']} - {scene_data['time_of_day']}"
+
+        # Sanitize characters
+        raw_chars = scene_data.get("characters", [])
+        chars = []
+        if isinstance(raw_chars, str):
+            chars = [c.strip() for c in raw_chars.split(",") if c.strip()]
+        elif isinstance(raw_chars, list):
+            for c in raw_chars:
+                if isinstance(c, str) and c.strip():
+                    chars.append(c.strip())
+                elif isinstance(c, dict) and c.get("name"):
+                    chars.append(str(c["name"]).strip())
+        scene_data["characters"] = chars
+
+        # Parse dialogue lines (gracefully handling strings and variations)
         dialogue = []
         for dl in scene_data.get("dialogue", []):
-            dialogue.append(DialogueLine(**dl))
+            if isinstance(dl, dict):
+                char = dl.get("character") or dl.get("speaker") or dl.get("name") or "CHARACTER"
+                line = dl.get("line") or dl.get("text") or dl.get("dialogue") or ""
+                paren = dl.get("parenthetical") or None
+                if paren and not str(paren).startswith("("):
+                    paren = f"({paren})"
+                dialogue.append(DialogueLine(character=str(char).upper(), line=str(line), parenthetical=paren))
+            elif isinstance(dl, str) and dl.strip():
+                if ":" in dl:
+                    spk, text = dl.split(":", 1)
+                    spk = spk.strip().upper()
+                    text = text.strip()
+                    paren = None
+                    if text.startswith("(") and ")" in text:
+                        paren_end = text.index(")")
+                        paren = text[:paren_end + 1].strip()
+                        text = text[paren_end + 1:].strip()
+                    dialogue.append(DialogueLine(character=spk, line=text, parenthetical=paren))
+                else:
+                    dialogue.append(DialogueLine(character="CHARACTER", line=dl.strip()))
+        # Fallback: If dialogue array is empty, check if dialogue was embedded in action_lines
+        if not dialogue and scene_data.get("action_lines"):
+            action_text = scene_data["action_lines"]
+            # 1. Screenplay format: CHARACTER NAME in all caps, optional parenthetical, dialogue lines
+            pattern_script = re.compile(
+                r'(?:^|\n\n)([A-Z][A-Z0-9\s\.\'\-]{1,25})\n(?:\((.*?)\)\n)?([^\n]+(?:\n(?![A-Z]{2,}\b|\n)[^\n]+)*)',
+                re.MULTILINE
+            )
+            for m in pattern_script.finditer(action_text):
+                spk = m.group(1).strip().upper()
+                if any(kw in spk for kw in ["INT.", "EXT.", "CUT TO", "FADE IN", "FADE OUT", "DISSOLVE", "SCENE"]):
+                    continue
+                paren = f"({m.group(2).strip()})" if m.group(2) else None
+                text = m.group(3).strip()
+                if text:
+                    dialogue.append(DialogueLine(character=spk, line=text, parenthetical=paren))
+
+            # 2. Colon format: CHARACTER: Line
+            if not dialogue:
+                pattern_colon = re.compile(
+                    r'(?:^|\n)([A-Z][A-Z0-9\s\.\'\-]{1,25})(?:\s*\((.*?)\))?:\s*([^\n]+)',
+                    re.MULTILINE
+                )
+                for m in pattern_colon.finditer(action_text):
+                    spk = m.group(1).strip().upper()
+                    if any(kw in spk for kw in ["INT.", "EXT.", "NOTE", "SCENE"]):
+                        continue
+                    paren = f"({m.group(2).strip()})" if m.group(2) else None
+                    text = m.group(3).strip()
+                    if text:
+                        dialogue.append(DialogueLine(character=spk, line=text, parenthetical=paren))
+
         scene_data["dialogue"] = dialogue
 
-        # Parse continuity facts
+        # Parse continuity facts (gracefully handling plain strings or dicts)
         facts = []
-        for f in scene_data.get("continuity_facts", []):
-            f["scene_established"] = scene_data.get("scene_number", len(state.scenes) + 1)
-            facts.append(ContinuityFact(**f))
+        raw_facts = scene_data.get("continuity_facts", [])
+        if isinstance(raw_facts, list):
+            for f in raw_facts:
+                if isinstance(f, dict):
+                    f["scene_established"] = scene_number
+                    if "characters_involved" not in f or not f["characters_involved"]:
+                        f["characters_involved"] = chars
+                    elif isinstance(f["characters_involved"], str):
+                        f["characters_involved"] = [c.strip() for c in f["characters_involved"].split(",") if c.strip()]
+                    if "category" in f and isinstance(f["category"], str):
+                        f["category"] = _normalize_enum(f["category"], ContinuityCategory)
+                    facts.append(ContinuityFact(**f))
+                elif isinstance(f, str) and f.strip():
+                    facts.append(ContinuityFact(
+                        description=f.strip(),
+                        scene_established=scene_number,
+                        characters_involved=chars,
+                        category=ContinuityCategory.PLOT,
+                    ))
         scene_data["continuity_facts"] = facts
 
-        scene = Scene(**scene_data)
-        scene.status = SceneStatus.DRAFTED
+        # Filter only valid Scene model attributes
+        valid_keys = set(Scene.model_fields.keys())
+        cleaned_scene_data = {k: v for k, v in scene_data.items() if k in valid_keys}
 
-        # Generate the raw screenplay text
+        scene = Scene(**cleaned_scene_data)
+        scene.status = SceneStatus.DRAFTED
         scene.raw_text = scene.to_screenplay_text()
 
         # Add or update
@@ -178,7 +356,15 @@ async def add_scene_to_script(project_id: str, scene_json: str) -> str:
             state.scenes.append(scene)
             state.scenes.sort(key=lambda s: s.scene_number)
 
-        # Add continuity facts to the global log
+        # Mark corresponding beat as DRAFTED in the beat sheet
+        if scene.beat_reference is not None:
+            for b in state.beat_sheet:
+                if b.beat_number == scene.beat_reference:
+                    b.status = BeatStatus.DRAFTED
+                    if scene.scene_number not in b.scene_numbers:
+                        b.scene_numbers.append(scene.scene_number)
+
+        # Add continuity facts to global log
         for fact in facts:
             state.continuity_log.append(fact)
 
@@ -188,23 +374,27 @@ async def add_scene_to_script(project_id: str, scene_json: str) -> str:
                 if state.characters[char_name].first_appearance_scene is None:
                     state.characters[char_name].first_appearance_scene = scene.scene_number
 
-        # Index in vector stores (ClickHouse + ChromaDB)
-        store = get_vector_store()
-        await store.index_scene(project_id, scene)
-        for fact in facts:
-            await store.index_continuity_fact(project_id, fact)
+        # Index in vector stores (ClickHouse + ChromaDB) — non-fatal
+        try:
+            store = get_vector_store()
+            await store.index_scene(project_id, scene)
+            for fact in facts:
+                await store.index_continuity_fact(project_id, fact)
+        except Exception as ve:
+            logger.warning(f"Vector indexing warning for scene {scene.scene_number}: {ve}")
 
-        # Save
+        # Save to SQLite
         await _save_state(project_id)
 
         return json.dumps({
             "success": True,
             "scene_number": scene.scene_number,
+            "beat_reference": scene.beat_reference,
             "status": scene.status.value,
             "dialogue_count": len(scene.dialogue),
         })
     except Exception as e:
-        logger.error(f"Error adding scene: {e}")
+        logger.error(f"Error adding scene: {e}", exc_info=True)
         return json.dumps({"success": False, "error": str(e)})
 
 
