@@ -109,7 +109,7 @@ When generating scene videos with `generate_scene_video`:
 - `save_character_visual`: Lock down a character's appearance or save a reference portrait
 - `generate_character_portrait`: Generate a canonical reference portrait for a character
 - `generate_mood_board`: Generate the scene visualization (pass character_visuals!)
-- `generate_scene_video`: Generate a cinematic video performance of a scene with characters and synchronized dialogue audio! Pass scene_number, scene_description, dialogue_context, character_visuals, project_id, video_mode="veo" (uses Google Veo 3.1 on Vertex AI for real 24fps cinematic video with physical movement, acting, and steadycam tracking), and optional duration_seconds (e.g. 16 or 24 to generate multi-shot parallel film sequences that don't loop). ALWAYS use video_mode="veo" when asked to generate a video or movie clip. Only use video_mode="animatic" if the user explicitly requests an animatic or storyboard.
+- `generate_scene_video`: Generate a cinematic video performance of a scene with characters and synchronized dialogue audio! BEFORE calling this tool, you MUST write a VERY DETAILED PROMPT describing each and every direction, character action, and camera movement for the video. Pass this highly detailed prompt as `scene_description`. Pass scene_number, dialogue_context, character_visuals, project_id, and optional video_mode ("auto", "veo" for a single Google Veo 3.1 AI video, "veo-director" for a full-scene multi-shot video, or "animatic" for dynamic multi-camera motion cuts). ALWAYS use video_mode="veo" or "veo-director" when asked to generate a video or movie clip. Only use video_mode="animatic" if the user explicitly requests an animatic or storyboard.
 - `attach_media_to_scene`: Save the generated image URL to the Script State (REQUIRED)
 """
 
@@ -124,7 +124,8 @@ def create_visualizer() -> LlmAgent:
             "canonical character portraits, and full scene video performances via Google Veo 3.1 (Vertex AI) "
             "with real 24fps fluid motion, physical acting, and cinematography. "
             "Enforces character visual consistency across scenes by using locked-down appearance descriptions, "
-            "reference portraits, and analyzed reference media. Use to visualize tone, characters, and scenes."
+            "reference portraits, and analyzed reference media. Use 'veo-director' mode to generate a full scene video. "
+            "WHEN GENERATING VIDEO, MAKE A VERY DETAILED PROMPT DESCRIBING EACH AND EVERY DIRECTION FOR THE VIDEO."
         ),
         instruction=VISUALIZER_INSTRUCTION,
         tools=[
