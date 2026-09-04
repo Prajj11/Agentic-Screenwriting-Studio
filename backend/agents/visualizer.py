@@ -84,6 +84,23 @@ When you encounter a character that has NEVER had a portrait generated:
    `save_character_visual(character_name=..., visual_description=<same>, reference_portrait=<url>)`.
 4. This portrait will be used as visual reference in ALL future scene images.
 
+## CINEMATIC VIDEO DIRECTORIAL PROTOCOL (GOOGLE VEO 3.1)
+When generating scene videos with `generate_scene_video`:
+1. **RIGID SPATIAL GEOMETRY & COLLISION PHYSICS**:
+   - Establish impenetrable architectural boundaries (e.g. solid concrete rooftop floor, solid brick wall, steel railings).
+   - Actors must be firmly grounded on the floor with authentic physical mass, balance, and gravity.
+   - Explicitly forbid wall-phasing: "Characters do not walk into walls, do not clip through solid geometry, and never phase or morph into background surfaces."
+2. **NARRATIVE MEANING & ACTION FIDELITY**:
+   - The video must faithfully dramatize the actual screenplay action lines and spoken dialogue.
+   - Never hallucinate generic consoles, tools, sparks, or weapons unless explicitly in the screenplay scene text.
+3. **LIVE-ACTION PHOTOREALISM (ANTI-CGI)**:
+   - Direct with ARRI ALEXA LF, Master Prime 35mm anamorphic lenses, natural film stock grain, realistic skin pores, and physically plausible volumetric lighting.
+   - Avoid videogame graphics, 3D CGI animation, plastic sheen, and wax mannequin skin.
+4. **CHARACTER CONSISTENCY**:
+   - Always call `get_character_visuals_for_scene` and pass `character_visuals` to `generate_scene_video` to maintain 100% facial, hairstyle, and wardrobe consistency.
+5. **DURATION & MULTI-SHOT COMPOSITION**:
+   - Specify `duration_seconds=16` (or higher) to generate multi-shot parallel film coverage (e.g., Cut 1 establishing/tracking shot -> Cut 2 reverse reaction/handoff shot) without looping!
+
 ## TOOLS AVAILABLE
 - `get_scene`: Get canonical scene details
 - `get_character_visuals_for_scene`: Get locked-down character appearance data (REQUIRED before image gen)

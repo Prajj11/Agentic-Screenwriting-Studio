@@ -556,6 +556,15 @@ async def _generate_single_veo_clip(
     from google.genai import types
     from config import settings
 
+    negative_prompt = (
+        "phasing through walls, walking through solid objects, clipping through geometry, "
+        "morphing into walls, melting into surfaces, disappearing body parts, floating characters, "
+        "extra arms, extra hands, extra legs, deformed fingers, mutated limbs, distorted face, "
+        "cartoon, anime, 3D CGI animation, videogame render, Unreal Engine, plastic skin, "
+        "wax mannequin, airbrushed, oversaturated neon, rubbery motion, jittery camera, "
+        "teleporting, ghosting, video glitch, blurry, low resolution, amateur footage, uncanny valley"
+    )
+
     logger.info(f"[VeoShot {shot_index}] Submitting generation ({duration_seconds}s, model={model_used})...")
     try:
         operation = client.models.generate_videos(
@@ -568,6 +577,7 @@ async def _generate_single_veo_clip(
                 aspect_ratio="16:9",
                 number_of_videos=1,
                 duration_seconds=duration_seconds,
+                negative_prompt=negative_prompt,
             ),
         )
 
@@ -657,6 +667,153 @@ def _concat_video_clips(clip_paths: list[Path], output_path: Path) -> bool:
         return False
 
 
+async def _plan_cinematic_shots(
+    scene_number: int,
+    scene_description: str,
+    dialogue_context: str,
+    char_block: str,
+    num_shots: int,
+    project_id: str = "",
+) -> list[str]:
+    """
+    Dynamically plan sequential cinematic camera setups using Gemini as the AI Director.
+    
+    Enforces:
+    1. Rigid Physical Architecture & Geometry: Solid ground, walls, railings. Actors have weight and gravity.
+       Explicitly forbids walking into walls, phasing through solid objects, or floating.
+    2. Screenplay-faithful narrative: Specific physical gestures and emotional deliveries aligned with the scene.
+    3. Photorealistic 35mm optical cinematography (ARRI ALEXA LF, Master Prime lenses, natural skin pores).
+    4. Exact character appearance preservation.
+    """
+    from config import settings
+
+    # Extract additional context from script state if available
+    slug = ""
+    action_text = scene_description
+    dialogue_text = dialogue_context
+    if project_id:
+        try:
+            from tools.script_state import _get_state
+            state = await _get_state(project_id)
+            scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+            if scene:
+                slug = scene.slug or ""
+                if scene.action_lines:
+                    action_text = f"{slug}. " + " ".join(scene.action_lines)
+                if not dialogue_text and scene.dialogue:
+                    dialogue_text = " ".join([f'{d.character}: "{d.line}"' for d in scene.dialogue[:5]])
+        except Exception as e:
+            logger.warning(f"[ShotDirector] Could not extract scene state: {e}")
+
+    # Fallback shot prompts adhering strictly to realism, physics, and the specific scene
+    def _build_physics_fallback() -> list[str]:
+        cinematic_base = (
+            f"Photorealistic live-action cinema, shot on ARRI ALEXA LF, ARRI Master Prime 35mm anamorphic lens, "
+            f"Kodak Vision3 500T film grain emulation, realistic natural skin pores, realistic subsurface scattering. "
+            f"Rigid spatial physics: solid impenetrable architecture, solid floor with authentic foot grounding, friction, and mass. "
+            f"Zero wall-phasing, zero geometry clipping, zero floating. Characters do not walk into solid objects. "
+        )
+        fps_spec = "24fps filmic motion blur, natural camera pacing, 16:9 widescreen aspect ratio."
+        char_desc = f"\n{char_block}\n" if char_block else ""
+        
+        if num_shots == 1:
+            return [
+                f"{cinematic_base}Scene {scene_number} ({slug or 'Scene Action'}). Setting & Action: {action_text}. "
+                f"Dialogue & Acting: {dialogue_text}. {char_desc}Steadycam tracking shot, subtle organic camera breathing, "
+                f"authentic physical blocking, realistic eye contact and micro-expressions. {fps_spec}"
+            ]
+        elif num_shots == 2:
+            return [
+                f"{cinematic_base}Scene {scene_number} (Shot 1 of 2 - Establishing Action & Spatial Blocking). "
+                f"Setting & Action: {action_text}. {char_desc}Medium-wide tracking shot establishing characters firmly grounded on the solid floor. "
+                f"Initiating dramatic interaction: {dialogue_text}. Subtle camera push-in on dolly, volumetric ambient lighting. {fps_spec}",
+                f"{cinematic_base}Scene {scene_number} (Shot 2 of 2 - Reverse Angle & Dramatic Interaction). "
+                f"Setting & Action: {action_text}. {char_desc}Over-the-shoulder medium close-up reverse angle. "
+                f"Characters reacting and delivering dialogue with intense focus: {dialogue_text}. "
+                f"Natural physical gestures, solid boundaries behind characters with zero clipping. {fps_spec}"
+            ]
+        else:
+            return [
+                f"{cinematic_base}Scene {scene_number} (Shot 1 of 3 - Opening Wide & Physical Grounding). "
+                f"Setting & Action: {action_text}. {char_desc}Medium-wide atmospheric establishing shot. Characters firmly anchored on solid ground. {fps_spec}",
+                f"{cinematic_base}Scene {scene_number} (Shot 2 of 3 - Medium Reverse Coverage). "
+                f"Setting & Action: {action_text}. {char_desc}Medium two-shot / reverse angle. Dialogue delivery: {dialogue_text}. Natural physical interaction. {fps_spec}",
+                f"{cinematic_base}Scene {scene_number} (Shot 3 of 3 - Climactic Tight Angle). "
+                f"Setting & Action: {action_text}. {char_desc}Dynamic medium close-up, dramatic lighting contrast, realistic facial emotion and physical tension. {fps_spec}"
+            ]
+
+    # Use Gemini to generate dynamic screenplay-specific shot prompts
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(
+            vertexai=True,
+            project=settings.gcp_project_id,
+            location=settings.gcp_location or "us-central1",
+        )
+
+        director_prompt = f"""You are a master Hollywood Film Director, Cinematographer, and Visual Effects Supervisor directing Google Veo 3.1 video generation.
+
+SCENE CONTEXT:
+Scene Number: {scene_number}
+Slugline: {slug or "LOCATION"}
+Screenplay Action: {action_text}
+Dialogue Lines: {dialogue_text}
+{char_block}
+
+DIRECTORIAL REQUIREMENTS:
+You must plan exactly {num_shots} sequential, distinct cinematic shot prompts (each shot is an 8-second video clip).
+CRITICAL RULES TO ELIMINATE DEFECTS:
+1. RIGID SPATIAL GEOMETRY & COLLISION PHYSICS:
+   - Define the physical environment explicitly (e.g. solid concrete floor, impenetrable brick parapet wall, solid steel railing).
+   - Actors MUST stand firmly on the ground with realistic mass, balance, and friction.
+   - EXPLICITLY forbid wall-phasing: "Characters do not walk into walls, do not clip through solid geometry, and never phase or morph into background surfaces."
+2. SCREENPLAY NARRATIVE FIDELITY (NO HALLUCINATED GADGETS/ACTIONS):
+   - Every shot's action and blocking must directly reflect the actual screenplay action ({action_text}) and dialogue ({dialogue_text}).
+   - DO NOT invent generic sci-fi consoles, machinery, sparks, or weapons unless explicitly in the text.
+3. 35MM LIVE-ACTION PHOTOREALISM (ANTI-CGI / ANTI-WAX):
+   - Specify: "Shot on ARRI ALEXA LF, Master Prime 35mm anamorphic lens, Kodak Vision3 500T film grain emulation."
+   - Mandate natural human skin pores, authentic subsurface scattering, real damp fabric texture, physically plausible lighting.
+   - Forbid cartoon, anime, 3D CGI render, videogame graphics, wax mannequin skin, or plastic sheen.
+4. CHARACTER CONSISTENCY:
+   - Include the character appearance traits in every shot prompt so the face, hair, and wardrobe remain 100% identical.
+5. SEQUENTIAL CAMERA CUTS:
+   - Shot 1: Establishing wide or medium tracking shot introducing the spatial environment and starting the action.
+   - Shot 2: Reverse angle or over-the-shoulder medium shot capturing reaction, dialogue delivery, and physical handoff/interaction.
+   - Shot 3 (if requested): Climactic tight angle capturing emotional resolution and environmental atmosphere.
+
+Return a JSON object with a single key "shots" containing exactly {num_shots} strings.
+"""
+        resp = client.models.generate_content(
+            model=settings.gemini_main_model,
+            contents=director_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.3,
+            ),
+        )
+        if resp and resp.text:
+            cleaned_text = resp.text.strip()
+            if cleaned_text.startswith("```"):
+                cleaned_text = re.sub(r"^```(?:json)?\n?", "", cleaned_text)
+                cleaned_text = re.sub(r"\n?```$", "", cleaned_text)
+            data = json.loads(cleaned_text)
+            shots = data.get("shots", [])
+            if isinstance(shots, list) and len(shots) >= num_shots:
+                logger.info(f"[Veo Director] Gemini planned {len(shots)} dynamic cinematic shots successfully.")
+                return [s.strip() for s in shots[:num_shots]]
+            elif isinstance(shots, list) and len(shots) > 0:
+                fallback = _build_physics_fallback()
+                while len(shots) < num_shots:
+                    shots.append(fallback[len(shots)])
+                return [s.strip() for s in shots[:num_shots]]
+    except Exception as e:
+        logger.warning(f"[Veo Director] Dynamic shot planning fallback triggered: {e}")
+
+    return _build_physics_fallback()
+
+
 async def generate_veo_scene_video(
     scene_number: int,
     scene_description: str,
@@ -723,41 +880,15 @@ async def generate_veo_scene_video(
 
     logger.info(f"[Veo Director] Directing Scene {scene_number} ({target_duration:.1f}s requested -> {num_shots} x 8s shots = {num_shots * 8}s total)...")
 
-    # Build prompts for each shot setup
-    shot_prompts = []
-    base_info = f"Cinematic photorealistic movie scene performance for Scene {scene_number}.\nSetting & Action: {scene_description}\n"
-    if char_block:
-        base_info += f"{char_block}\n"
-    if dialogue_context:
-        base_info += f"Performance & Acting: Characters speaking and emotionally reacting to the scene: {dialogue_context}\n"
-
-    if num_shots == 1:
-        shot_prompts.append(
-            base_info +
-            "Cinematography & Motion: Steadycam dynamic tracking shot, continuous physical movement, character gestures and interactions, natural kinetic blocking, rich facial micro-expressions, cinematic lighting, 24fps filmic motion blur, 16:9 widescreen aspect ratio."
-        )
-    elif num_shots == 2:
-        shot_prompts.append(
-            base_info +
-            "Cinematography & Angle (Shot 1 of 2 - Establishing Action): Dynamic medium-wide establishing tracking shot. Characters active in foreground environment, starting physical action with tools/consoles, steadycam movement pushing in, atmospheric volumetric lighting, 24fps filmic motion blur, 16:9 widescreen."
-        )
-        shot_prompts.append(
-            base_info +
-            "Cinematography & Angle (Shot 2 of 2 - Reverse Angle & Progression): Over-the-shoulder medium reverse tracking shot focusing on reaction, counter-action, secondary character operating controls/weapons, emotional acting and physical intensity, dramatic contrast lighting, 24fps filmic motion blur, 16:9 widescreen."
-        )
-    else:
-        shot_prompts.append(
-            base_info +
-            "Cinematography & Angle (Shot 1 of 3 - Opening Action): Medium-wide establishing tracking shot. High kinetic energy, physical setup in the environment, character operating tools/machinery, steadycam push-in, 24fps filmic motion blur, 16:9 widescreen."
-        )
-        shot_prompts.append(
-            base_info +
-            "Cinematography & Angle (Shot 2 of 3 - Reaction & Tension): Reverse angle medium shot. Emotional reaction, secondary character interacting with displays/communications, rising stakes, dramatic volumetric light, 24fps filmic motion blur, 16:9 widescreen."
-        )
-        shot_prompts.append(
-            base_info +
-            "Cinematography & Angle (Shot 3 of 3 - Climax Breakthrough): Low-angle dynamic close-up kinetic shot. High physical intensity, sparks/smoke, decisive action/breach, powerful facial micro-expressions, 24fps filmic motion blur, 16:9 widescreen."
-        )
+    # Build prompts for each shot setup dynamically using AI Cinematic Director
+    shot_prompts = await _plan_cinematic_shots(
+        scene_number=scene_number,
+        scene_description=scene_description,
+        dialogue_context=dialogue_context,
+        char_block=char_block,
+        num_shots=num_shots,
+        project_id=project_id,
+    )
 
     try:
         from google import genai
@@ -863,223 +994,172 @@ async def generate_scene_video(
         if _active_states:
             project_id = list(_active_states.keys())[-1]
 
-    # Calculate target duration from audio if available
+    # Auto-enrich sparse scene inputs from canonical ScriptState if available
     target_dur = float(duration_seconds)
-    if target_dur <= 0 and project_id:
+    if project_id:
         try:
             from tools.script_state import _get_state
             state = await _get_state(project_id)
             scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
-            if scene and scene.table_read_audio:
-                fname = scene.table_read_audio.split("/")[-1]
-                cand = Path(settings.output_audio_dir) / fname
-                if cand.exists():
-                    target_dur = _get_media_duration(cand)
-            if target_dur <= 0 and scene and scene.dialogue:
-                target_dur = float(max(8, len(scene.dialogue) * 3.5))
+            if scene:
+                if (not scene_description or len(scene_description.strip()) < 35 or scene_description == "Screenplay scene performance") and scene.action_lines:
+                    scene_description = f"{scene.slug or ''}. " + " ".join(scene.action_lines)
+                if not dialogue_context and scene.dialogue:
+                    dialogue_context = " ".join([f'{d.character}: "{d.line}"' for d in scene.dialogue[:6]])
+                if target_dur <= 0:
+                    if scene.table_read_audio:
+                        fname = scene.table_read_audio.split("/")[-1]
+                        cand = Path(settings.output_audio_dir) / fname
+                        if cand.exists():
+                            target_dur = _get_media_duration(cand)
+                    if target_dur <= 0 and scene.dialogue:
+                        target_dur = float(max(8, len(scene.dialogue) * 3.5))
         except Exception as e:
-            logger.warning(f"[VideoDirector] Error calculating audio duration: {e}")
+            logger.warning(f"[VideoDirector] Error enriching scene details from state: {e}")
+
     if target_dur <= 0:
         target_dur = 16.0  # Default to cinematic 16s multi-shot scene!
 
-    # ── Mode Branch: Forced Animatic ─────────────────────────────────
-    if video_mode.lower() == "animatic" and project_id:
-        try:
-            animatic_res = await generate_multi_shot_dialogue_video(
-                project_id=project_id,
-                scene_number=scene_number,
-                scene_description=scene_description,
-                character_visuals=character_visuals,
-            )
-            if animatic_res:
-                return animatic_res
-        except Exception as a_err:
-            logger.warning(f"[VideoDirector] Animatic mode error: {a_err}")
-
-    # ── Mode Branch: Veo Generative Video ────────────────────────────
+    # ── Google Veo 3.1 Generative Video (Default & Enforced) ─────────
+    # Static image zoompan fallbacks have been completely eliminated per user directive.
+    # We always generate real 24fps physical motion using Google Veo 3.1 with multi-shot cuts.
     veo_success = False
     veo_filepath = None
     veo_model = settings.veo_video_model
 
-    if video_mode.lower() in ("veo", "auto"):
-        veo_success, veo_filepath, veo_info = await generate_veo_scene_video(
-            scene_number=scene_number,
-            scene_description=scene_description,
-            dialogue_context=dialogue_context,
-            character_visuals=character_visuals,
-            characters=characters,
-            project_id=project_id,
-            target_duration=target_dur,
-        )
+    logger.info(f"[VideoDirector] Enforcing Google Veo 3.1 generator for Scene {scene_number} (target={target_dur}s)...")
+    veo_success, veo_filepath, veo_info = await generate_veo_scene_video(
+        scene_number=scene_number,
+        scene_description=scene_description,
+        dialogue_context=dialogue_context,
+        character_visuals=character_visuals,
+        characters=characters,
+        project_id=project_id,
+        target_duration=target_dur,
+    )
 
-        if veo_success and veo_filepath and veo_filepath.exists():
-            final_filepath = veo_filepath
-            final_filename = veo_filepath.name
-            merged_with_dialogue = False
-            merged_with_soundtrack = False
+    if veo_success and veo_filepath and veo_filepath.exists():
+        final_filepath = veo_filepath
+        final_filename = veo_filepath.name
+        merged_with_dialogue = False
+        merged_with_soundtrack = False
 
-            if project_id:
-                try:
-                    from tools.script_state import _get_state, attach_media_to_scene, save_media_analysis
-                    state = await _get_state(project_id)
-                    scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
+        if project_id:
+            try:
+                from tools.script_state import _get_state, attach_media_to_scene, save_media_analysis
+                state = await _get_state(project_id)
+                scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
 
-                    audio_file = None
-                    soundtrack_file = None
+                audio_file = None
+                soundtrack_file = None
 
-                    if scene:
-                        if scene.table_read_audio:
-                            if scene.table_read_audio.startswith("/api/media/audio/"):
-                                fname = scene.table_read_audio.split("/")[-1]
-                                candidate = Path(settings.output_audio_dir) / fname
-                                if candidate.exists():
-                                    audio_file = candidate
-                            else:
-                                candidate = Path(scene.table_read_audio)
-                                if candidate.exists():
-                                    audio_file = candidate
+                if scene:
+                    if scene.table_read_audio:
+                        if scene.table_read_audio.startswith("/api/media/audio/"):
+                            fname = scene.table_read_audio.split("/")[-1]
+                            candidate = Path(settings.output_audio_dir) / fname
+                            if candidate.exists():
+                                audio_file = candidate
+                        else:
+                            candidate = Path(scene.table_read_audio)
+                            if candidate.exists():
+                                audio_file = candidate
 
-                        # If no table read audio yet, generate on the fly
-                        if not audio_file and scene.dialogue:
-                            logger.info(f"[VeoMerge] Generating Table Read audio for Scene {scene_number}...")
-                            from tools.tts import perform_table_read
-                            dialogue_payload = json.dumps({
-                                "scene_number": scene_number,
-                                "dialogue": [d.model_dump() for d in scene.dialogue],
-                            })
-                            tts_res_json = await perform_table_read(project_id, dialogue_payload)
-                            tts_res = json.loads(tts_res_json)
-                            if tts_res.get("success") and tts_res.get("audio_path"):
-                                audio_file = Path(tts_res["audio_path"])
-                                if tts_res.get("url"):
-                                    await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
+                    # If no table read audio yet, generate on the fly
+                    if not audio_file and scene.dialogue:
+                        logger.info(f"[VeoMerge] Generating Table Read audio for Scene {scene_number}...")
+                        from tools.tts import perform_table_read
+                        dialogue_payload = json.dumps({
+                            "scene_number": scene_number,
+                            "dialogue": [d.model_dump() for d in scene.dialogue],
+                        })
+                        tts_res_json = await perform_table_read(project_id, dialogue_payload)
+                        tts_res = json.loads(tts_res_json)
+                        if tts_res.get("success") and tts_res.get("audio_path"):
+                            audio_file = Path(tts_res["audio_path"])
+                            if tts_res.get("url"):
+                                await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
 
-                        if scene.soundtrack_audio:
-                            if scene.soundtrack_audio.startswith("/api/media/audio/"):
-                                sfname = scene.soundtrack_audio.split("/")[-1]
-                                scandidate = Path(settings.output_audio_dir) / sfname
-                                if scandidate.exists():
-                                    soundtrack_file = scandidate
-                            else:
-                                scandidate = Path(scene.soundtrack_audio)
-                                if scandidate.exists():
-                                    soundtrack_file = scandidate
+                    if scene.soundtrack_audio:
+                        if scene.soundtrack_audio.startswith("/api/media/audio/"):
+                            sfname = scene.soundtrack_audio.split("/")[-1]
+                            scandidate = Path(settings.output_audio_dir) / sfname
+                            if scandidate.exists():
+                                soundtrack_file = scandidate
+                        else:
+                            scandidate = Path(scene.soundtrack_audio)
+                            if scandidate.exists():
+                                soundtrack_file = scandidate
 
-                    if audio_file and audio_file.exists():
-                        merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_voiced_{uuid.uuid4().hex[:8]}.mp4"
-                        merged_path = merge_video_with_audio(
-                            video_path=veo_filepath,
-                            audio_path=audio_file,
-                            output_path=merged_output_path,
-                            soundtrack_path=soundtrack_file,
-                        )
-                        if merged_path and merged_path.exists():
-                            final_filepath = merged_path
-                            final_filename = merged_path.name
-                            merged_with_dialogue = True
-                            if soundtrack_file:
-                                merged_with_soundtrack = True
-
-                    video_url = f"/api/media/videos/{final_filename}"
-                    await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
-                    await save_media_analysis(
-                        project_id=project_id,
-                        media_type="video",
-                        media_url=video_url,
-                        filename=final_filename,
-                        scene_number=scene_number,
-                        is_canon=True,
-                        caption=f"Google Veo 3.1 AI Cinematic Video for Scene {scene_number}: {scene_description[:100]}",
-                        structured_description={
-                            "video_summary": f"Google Veo 3.1 Cinematic Performance: {scene_description}",
-                            "has_embedded_dialogue": merged_with_dialogue,
-                            "has_soundtrack": merged_with_soundtrack,
-                            "video_mode": "veo",
-                            "model": veo_model,
-                        },
+                if audio_file and audio_file.exists():
+                    merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_voiced_{uuid.uuid4().hex[:8]}.mp4"
+                    merged_path = merge_video_with_audio(
+                        video_path=veo_filepath,
+                        audio_path=audio_file,
+                        output_path=merged_output_path,
+                        soundtrack_path=soundtrack_file,
                     )
-                except Exception as save_err:
-                    logger.warning(f"[VeoMerge] Error registering Veo video: {save_err}")
+                    if merged_path and merged_path.exists():
+                        final_filepath = merged_path
+                        final_filename = merged_path.name
+                        merged_with_dialogue = True
+                        if soundtrack_file:
+                            merged_with_soundtrack = True
 
-            video_url = f"/api/media/videos/{final_filename}"
-            return json.dumps({
-                "success": True,
-                "video_path": str(final_filepath),
-                "filename": final_filename,
-                "url": video_url,
-                "scene_number": scene_number,
-                "model": veo_model,
-                "video_mode": "veo",
-                "merged_with_dialogue": merged_with_dialogue,
-                "merged_with_soundtrack": merged_with_soundtrack,
-                "message": f"🎬 Generated high-fidelity cinematic video using Google Veo 3.1 for Scene {scene_number}!",
-            })
-
-    # ── Fallback / Auto: Dynamic Multi-Shot Animatic V2 ───────────────
-
-    if project_id:
+                video_url = f"/api/media/videos/{final_filename}"
+                await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
+                await save_media_analysis(
+                    project_id=project_id,
+                    media_type="video",
+                    media_url=video_url,
+                    filename=final_filename,
+                    scene_number=scene_number,
+                    is_canon=True,
+                    caption=f"Google Veo 3.1 AI Cinematic Video for Scene {scene_number}: {scene_description[:100]}",
+                    structured_description={
+                        "video_summary": f"Google Veo 3.1 Cinematic Performance: {scene_description}",
+                        "has_embedded_dialogue": merged_with_dialogue,
+                        "has_soundtrack": merged_with_soundtrack,
+                        "video_mode": "veo",
+                        "model": veo_model,
+                    },
+                )
+            except Exception as save_err:
+                logger.warning(f"[VeoMerge] Error registering Veo video: {save_err}")
+        # Mirror video to easily accessible consumer locations (project root and Downloads)
         try:
-            logger.info(f"[VideoDirector] Running Dynamic Multi-Shot Animatic Engine for Scene {scene_number}...")
-            animatic_res = await generate_multi_shot_dialogue_video(
-                project_id=project_id,
-                scene_number=scene_number,
-                scene_description=scene_description,
-                character_visuals=character_visuals,
-            )
-            if animatic_res:
-                return animatic_res
-        except Exception as anim_err:
-            logger.warning(f"[VideoDirector] Dynamic animatic pipeline encountered an issue: {anim_err}")
+            workspace_videos_dir = Path(__file__).resolve().parent.parent.parent / "generated_videos"
+            workspace_videos_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(final_filepath), str(workspace_videos_dir / final_filename))
 
-    # ── Final Standalone Fallback ─────────────────────────────────────
-    output_dir = Path(settings.output_videos_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fallback_filename = f"scene_{scene_number}_video_{uuid.uuid4().hex[:8]}.mp4"
-    fallback_filepath = output_dir / fallback_filename
+            user_downloads = Path.home() / "Downloads"
+            if user_downloads.exists():
+                shutil.copy2(str(final_filepath), str(user_downloads / final_filename))
 
-    try:
-        from tools.image_gen import generate_scene_image
-        res_json = await generate_scene_image(
-            scene_description=f"Cinematic keyframe shot: {scene_description}",
-            dialogue_context=dialogue_context,
-            characters=characters,
-            character_visuals=character_visuals,
-        )
-        res = json.loads(res_json)
-        frame_path = Path(res.get("image_path", "")) if res.get("success") else None
+            user_videos = Path.home() / "Videos"
+            if user_videos.exists():
+                shutil.copy2(str(final_filepath), str(user_videos / final_filename))
+            logger.info(f"[VideoDirector] Mirrored video to: {workspace_videos_dir / final_filename} and {user_downloads / final_filename}")
+        except Exception as copy_err:
+            logger.warning(f"Could not mirror video to consumer directories: {copy_err}")
 
-        ffmpeg_exe = _get_ffmpeg_path()
-        if ffmpeg_exe and frame_path and frame_path.exists():
-            cmd = [
-                ffmpeg_exe, "-y",
-                "-loop", "1", "-i", str(frame_path),
-                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=24000",
-                "-vf", "scale=1280:720,zoompan=z='min(zoom+0.0015,1.20)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30,eq=contrast=1.06:saturation=1.10,vignette=PI/4",
-                "-t", "5.0",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                str(fallback_filepath),
-            ]
-            subprocess.run(cmd, capture_output=True, timeout=30)
-            if fallback_filepath.exists() and fallback_filepath.stat().st_size > 1000:
-                video_url = f"/api/media/videos/{fallback_filename}"
-                return json.dumps({
-                    "success": True,
-                    "video_path": str(fallback_filepath),
-                    "filename": fallback_filename,
-                    "url": video_url,
-                    "scene_number": scene_number,
-                    "model": "cinematic-motion-keyframe",
-                    "video_mode": "animatic",
-                    "message": f"🎬 Generated cinematic motion keyframe video for Scene {scene_number}!",
-                })
-    except Exception as fb_err:
-        logger.warning(f"[VideoDirector] Final fallback error: {fb_err}")
+        video_url = f"/api/media/videos/{final_filename}"
+        return json.dumps({
+            "success": True,
+            "video_path": str(final_filepath),
+            "filename": final_filename,
+            "url": video_url,
+            "scene_number": scene_number,
+            "model": veo_model,
+            "video_mode": "veo",
+            "merged_with_dialogue": merged_with_dialogue,
+            "merged_with_soundtrack": merged_with_soundtrack,
+            "message": f"🎬 Generated high-fidelity cinematic video using Google Veo 3.1 for Scene {scene_number}!",
+        })
 
+    logger.error(f"[VideoDirector] Google Veo 3.1 generation failed for Scene {scene_number}")
     return json.dumps({
         "success": False,
-        "error": "Video generation could not complete. Please verify your video settings and try again.",
+        "error": f"Google Veo 3.1 video generation failed for Scene {scene_number}. Static image fallbacks have been completely disabled to maintain true live-action cinematic quality.",
         "scene_number": scene_number,
     })

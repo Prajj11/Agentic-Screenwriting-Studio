@@ -749,12 +749,19 @@ async def serve_audio(filename: str):
 
 
 @app.get("/api/media/videos/{filename}")
-async def serve_video(filename: str):
-    """Serve a generated scene video clip file."""
+async def serve_video(filename: str, download: bool = False):
+    """Serve or download a generated scene video clip file."""
     filepath = Path(settings.output_videos_dir) / filename
     if not filepath.exists():
-        raise HTTPException(404, f"Video not found: {filename}")
-    return FileResponse(str(filepath), media_type="video/mp4")
+        workspace_path = Path(__file__).resolve().parent.parent / "generated_videos" / filename
+        if workspace_path.exists():
+            filepath = workspace_path
+        else:
+            raise HTTPException(404, f"Video not found: {filename}")
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return FileResponse(str(filepath), media_type="video/mp4", headers=headers)
 
 
 @app.post("/api/video/generate")
@@ -766,7 +773,7 @@ async def generate_video_endpoint(payload: dict):
     characters = payload.get("characters", "")
     character_visuals = payload.get("character_visuals", "")
     project_id = payload.get("project_id", "")
-    video_mode = payload.get("mode", payload.get("video_mode", "auto"))
+    video_mode = payload.get("mode", payload.get("video_mode", "veo"))
 
     result_json = await generate_scene_video(
         scene_number=scene_number,

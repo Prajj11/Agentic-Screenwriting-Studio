@@ -632,11 +632,39 @@ function MediaCard({
       <div style={{ display: 'grid', gridTemplateColumns: isVideo ? '1fr' : '300px 1fr', gap: 'var(--space-lg)', padding: 'var(--space-lg)' }}>
         <div>
           {isVideo ? (
-            <video
-              controls
-              src={mediaFullUrl}
-              style={{ width: '100%', maxHeight: '360px', borderRadius: 'var(--radius-md)', background: '#000' }}
-            />
+            <div>
+              <video
+                controls
+                src={mediaFullUrl}
+                style={{ width: '100%', maxHeight: '360px', borderRadius: 'var(--radius-md)', background: '#000' }}
+              />
+              <div style={{ marginTop: '0.6rem', display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <a
+                  href={`${mediaFullUrl}?download=true`}
+                  download={item.filename || 'scene_video.mp4'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    background: 'var(--accent-primary, #f5a623)',
+                    color: '#000',
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ⬇️ Download Video (MP4)
+                </a>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                  📁 Also saved to: <code>generated_videos/</code> and your Windows <code>Downloads</code>
+                </span>
+              </div>
+            </div>
           ) : (
             <img
               src={mediaFullUrl}
