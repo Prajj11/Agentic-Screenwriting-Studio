@@ -3,6 +3,8 @@
 > **Built for the Google Cloud Agentic Cinema Hackathon** 🏆  
 > 🌐 **Live Demo:** [https://talevora.antideploy.com/]
 
+Live App: https://talevora.antideploy.com/
+
 ---
 
 **Talevora** is an end-to-end, multi-agent virtual writers' room and cinematic pre-production studio powered by **Google ADK (Agent Development Kit)** and **Google Gemini models**. It elevates screenwriting from a solitary blank-page ordeal to an orchestrated, collaborative pipeline: transforming a single-sentence logline into a fully structured, continuity-checked, performable screenplay complete with **cinematic concept art**, **multi-speaker dramatic table reads**, **original musical scores**, and **full-motion video performances**.
