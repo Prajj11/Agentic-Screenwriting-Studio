@@ -765,6 +765,129 @@ async def get_agent_statuses():
     return AgentStatusResponse(agents=agents)
 
 
+# ── Background Video Tasks ──────────────────────────────────────────────
+_video_tasks: dict[str, dict] = {}
+
+
+async def _execute_video_generation_task(task_id: str, payload: dict):
+    """Run video generation in the background, update status, and broadcast WS events."""
+    scene_number = int(payload.get("scene_number", 1))
+    scene_description = payload.get("scene_description", "Cinematic screenplay scene performance")
+    dialogue_context = payload.get("dialogue_context", "")
+    characters = payload.get("characters", "")
+    character_visuals = payload.get("character_visuals", "")
+    project_id = payload.get("project_id", "")
+    video_mode = payload.get("mode", payload.get("video_mode", "veo"))
+
+    if task_id in _video_tasks:
+        _video_tasks[task_id]["status"] = "processing"
+        _video_tasks[task_id]["progress"] = f"Rendering video for Scene {scene_number} ({video_mode} mode)..."
+
+    await broadcast_event({
+        "type": "video_progress",
+        "task_id": task_id,
+        "scene_number": scene_number,
+        "progress": f"Started video rendering for Scene {scene_number}",
+        "timestamp": datetime.now().isoformat(),
+    })
+
+    try:
+        result_json = await generate_scene_video(
+            scene_number=scene_number,
+            scene_description=scene_description,
+            dialogue_context=dialogue_context,
+            characters=characters,
+            character_visuals=character_visuals,
+            project_id=project_id,
+            video_mode=video_mode,
+        )
+        parsed = json.loads(result_json) if isinstance(result_json, str) else result_json
+        video_url = parsed.get("video_url") or parsed.get("url") or parsed.get("filepath")
+
+        if task_id in _video_tasks:
+            _video_tasks[task_id]["status"] = "completed"
+            _video_tasks[task_id]["result"] = parsed
+            _video_tasks[task_id]["video_url"] = video_url
+            _video_tasks[task_id]["completed_at"] = datetime.now().isoformat()
+            _video_tasks[task_id]["progress"] = "Video generation completed successfully."
+
+        await broadcast_event({
+            "type": "video_completed",
+            "task_id": task_id,
+            "scene_number": scene_number,
+            "video_url": video_url,
+            "result": parsed,
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        logger.exception(f"[VideoTask {task_id}] Failed: {e}")
+        if task_id in _video_tasks:
+            _video_tasks[task_id]["status"] = "failed"
+            _video_tasks[task_id]["error"] = str(e)
+            _video_tasks[task_id]["completed_at"] = datetime.now().isoformat()
+            _video_tasks[task_id]["progress"] = f"Generation failed: {e}"
+
+        await broadcast_event({
+            "type": "video_failed",
+            "task_id": task_id,
+            "scene_number": scene_number,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+        })
+
+
+@app.post("/api/video/generate")
+async def generate_video_endpoint(payload: dict):
+    """
+    Generate a video performance for a scene asynchronously.
+    Returns 202 immediately with task_id to avoid Cloud Run 300s timeout.
+    """
+    scene_number = int(payload.get("scene_number", 1))
+    task_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+
+    _video_tasks[task_id] = {
+        "task_id": task_id,
+        "scene_number": scene_number,
+        "status": "queued",
+        "progress": f"Queued video generation for Scene {scene_number}...",
+        "video_url": None,
+        "result": None,
+        "error": None,
+        "created_at": now,
+        "completed_at": None,
+    }
+
+    asyncio.create_task(_execute_video_generation_task(task_id, payload))
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "success": True,
+            "task_id": task_id,
+            "status": "queued",
+            "scene_number": scene_number,
+            "poll_url": f"/api/video/tasks/{task_id}",
+            "message": "Video generation started in background.",
+        },
+    )
+
+
+@app.get("/api/video/tasks/{task_id}")
+async def get_video_task(task_id: str):
+    """Query the status of a background video generation task."""
+    task = _video_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Video task not found")
+    return task
+
+
+@app.get("/api/video/tasks")
+async def list_video_tasks():
+    """List recent video generation tasks."""
+    return {"tasks": list(_video_tasks.values())[-20:]}
+
+
 # ── Media Serving ─────────────────────────────────────────────────────
 
 @app.get("/api/media/images/{filename}")

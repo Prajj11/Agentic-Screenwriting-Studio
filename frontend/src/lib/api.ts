@@ -329,7 +329,15 @@ export async function generateVideo(params: {
   characters?: string;
   project_id?: string;
   mode?: 'auto' | 'veo' | 'animatic';
-}): Promise<{ success: boolean; url?: string; message?: string; error?: string }> {
+}): Promise<{
+  success: boolean;
+  task_id?: string;
+  status?: string;
+  poll_url?: string;
+  url?: string;
+  message?: string;
+  error?: string;
+}> {
   try {
     const res = await fetch(`${API_BASE}/api/video/generate`, {
       method: 'POST',
@@ -344,4 +352,22 @@ export async function generateVideo(params: {
     throw new Error(err?.message || 'Failed to generate video.');
   }
 }
+
+export async function getVideoTask(taskId: string): Promise<{
+  task_id: string;
+  scene_number: number;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress?: string;
+  video_url?: string;
+  error?: string;
+  created_at?: string;
+  completed_at?: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/video/tasks/${taskId}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch video task: ${res.status}`);
+  }
+  return await res.json();
+}
+
 

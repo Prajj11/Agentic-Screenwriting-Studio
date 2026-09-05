@@ -360,7 +360,7 @@ async def generate_multi_shot_dialogue_video(
         if not sentences:
             sentences = [scene_description]
         
-        import wave, uuid
+        import wave
         for idx, sentence in enumerate(sentences):
             duration = 7.0
             filename = f"action_scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.wav"
@@ -658,7 +658,8 @@ async def _generate_single_veo_clip(
 
     logger.info(f"[VeoShot {shot_index}] Submitting generation ({duration_seconds}s, model={model_used})...")
     try:
-        operation = client.models.generate_videos(
+        operation = await asyncio.to_thread(
+            client.models.generate_videos,
             model=model_used,
             source=types.GenerateVideosSource(
                 prompt=prompt[:1500],
@@ -675,7 +676,7 @@ async def _generate_single_veo_clip(
         for i in range(max_polls):
             await asyncio.sleep(poll_interval)
             try:
-                operation = client.operations.get(operation)
+                operation = await asyncio.to_thread(client.operations.get, operation)
             except Exception as poll_err:
                 logger.warning(f"[VeoShot {shot_index}] Poll {i+1} check: {poll_err}")
                 continue
