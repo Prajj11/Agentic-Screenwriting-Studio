@@ -1080,12 +1080,11 @@ async def generate_scene_video(
 
     logger.info(f"[VideoDirector] Generating scene video for Scene {scene_number} (mode={video_mode})...")
 
-<<<<<<< Updated upstream
     if not project_id:
         from tools.script_state import _active_states
         if _active_states:
             project_id = list(_active_states.keys())[-1]
-=======
+
     # ── Mode Branch: Forced Animatic or Veo-Director ─────────────────────────────────
     if video_mode.lower() in ("animatic", "veo-director", "auto") and project_id:
         try:
@@ -1100,8 +1099,6 @@ async def generate_scene_video(
                 return animatic_res
         except Exception as a_err:
             logger.warning(f"[VideoDirector] {video_mode} mode error: {a_err}")
->>>>>>> Stashed changes
-
     # Auto-enrich sparse scene inputs from canonical ScriptState if available
     target_dur = float(duration_seconds)
     if project_id:
@@ -1135,7 +1132,6 @@ async def generate_scene_video(
     veo_filepath = None
     veo_model = settings.veo_video_model
 
-<<<<<<< Updated upstream
     logger.info(f"[VideoDirector] Enforcing Google Veo 3.1 generator for Scene {scene_number} (target={target_dur}s)...")
     veo_success, veo_filepath, veo_info = await generate_veo_scene_video(
         scene_number=scene_number,
@@ -1146,17 +1142,6 @@ async def generate_scene_video(
         project_id=project_id,
         target_duration=target_dur,
     )
-=======
-    if video_mode.lower() == "veo":
-        veo_success, veo_filepath, veo_info = await generate_veo_scene_video(
-            scene_number=scene_number,
-            scene_description=scene_description,
-            dialogue_context=dialogue_context,
-            character_visuals=character_visuals,
-            characters=characters,
-            project_id=project_id,
-        )
->>>>>>> Stashed changes
 
     if veo_success and veo_filepath and veo_filepath.exists():
         final_filepath = veo_filepath
@@ -1174,32 +1159,6 @@ async def generate_scene_video(
                 soundtrack_file = None
 
                 if scene:
-                    if scene.table_read_audio:
-                        if scene.table_read_audio.startswith("/api/media/audio/"):
-                            fname = scene.table_read_audio.split("/")[-1]
-                            candidate = Path(settings.output_audio_dir) / fname
-                            if candidate.exists():
-                                audio_file = candidate
-                        else:
-                            candidate = Path(scene.table_read_audio)
-                            if candidate.exists():
-                                audio_file = candidate
-
-                    # If no table read audio yet, generate on the fly
-                    if not audio_file and scene.dialogue:
-                        logger.info(f"[VeoMerge] Generating Table Read audio for Scene {scene_number}...")
-                        from tools.tts import perform_table_read
-                        dialogue_payload = json.dumps({
-                            "scene_number": scene_number,
-                            "dialogue": [d.model_dump() for d in scene.dialogue],
-                        })
-                        tts_res_json = await perform_table_read(project_id, dialogue_payload)
-                        tts_res = json.loads(tts_res_json)
-                        if tts_res.get("success") and tts_res.get("audio_path"):
-                            audio_file = Path(tts_res["audio_path"])
-                            if tts_res.get("url"):
-                                await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
-
                     if scene.soundtrack_audio:
                         if scene.soundtrack_audio.startswith("/api/media/audio/"):
                             sfname = scene.soundtrack_audio.split("/")[-1]
@@ -1211,60 +1170,26 @@ async def generate_scene_video(
                             if scandidate.exists():
                                 soundtrack_file = scandidate
 
-<<<<<<< Updated upstream
-                if audio_file and audio_file.exists():
-                    merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_voiced_{uuid.uuid4().hex[:8]}.mp4"
-                    merged_path = merge_video_with_audio(
-                        video_path=veo_filepath,
-                        audio_path=audio_file,
-                        output_path=merged_output_path,
-                        soundtrack_path=soundtrack_file,
-=======
-                    if audio_file and audio_file.exists():
-                        merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_voiced_{uuid.uuid4().hex[:8]}.mp4"
+                    # Table read logic has been removed to allow the video to use its native audio (if any).
+                    if soundtrack_file and soundtrack_file.exists():
+                        merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_scored_{uuid.uuid4().hex[:8]}.mp4"
+                        # Use soundtrack as the primary audio track since table read is disabled
                         merged_path = merge_video_with_audio(
                             video_path=veo_filepath,
-                            audio_path=audio_file,
+                            audio_path=soundtrack_file,
                             output_path=merged_output_path,
-                            soundtrack_path=soundtrack_file,
+                            soundtrack_path=None,
                         )
                         if merged_path and merged_path.exists():
                             final_filepath = merged_path
                             final_filename = merged_path.name
-                            merged_with_dialogue = True
-                            if soundtrack_file:
-                                merged_with_soundtrack = True
+                            merged_with_soundtrack = True
 
                     # Ensure at least 120 seconds for Veo mode too
                     padded_filepath = _pad_video_to_120s(final_filepath)
                     if padded_filepath != final_filepath:
                         final_filepath = padded_filepath
                         final_filename = padded_filepath.name
-
-                    video_url = f"/api/media/videos/{final_filename}"
-                    await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
-                    await save_media_analysis(
-                        project_id=project_id,
-                        media_type="video",
-                        media_url=video_url,
-                        filename=final_filename,
-                        scene_number=scene_number,
-                        is_canon=True,
-                        caption=f"Google Veo 2.0 AI Cinematic Video for Scene {scene_number}: {scene_description[:100]}",
-                        structured_description={
-                            "video_summary": f"Google Veo 2.0 Cinematic Performance: {scene_description}",
-                            "has_embedded_dialogue": merged_with_dialogue,
-                            "has_soundtrack": merged_with_soundtrack,
-                            "video_mode": "veo-2.0",
-                        },
->>>>>>> Stashed changes
-                    )
-                    if merged_path and merged_path.exists():
-                        final_filepath = merged_path
-                        final_filename = merged_path.name
-                        merged_with_dialogue = True
-                        if soundtrack_file:
-                            merged_with_soundtrack = True
 
                 video_url = f"/api/media/videos/{final_filename}"
                 await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)
@@ -1288,25 +1213,9 @@ async def generate_scene_video(
                 logger.warning(f"[VeoMerge] Error registering Veo video: {save_err}")
         # Mirror video to easily accessible consumer locations (project root and Downloads)
         try:
-<<<<<<< Updated upstream
             workspace_videos_dir = Path(__file__).resolve().parent.parent.parent / "generated_videos"
             workspace_videos_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(final_filepath), str(workspace_videos_dir / final_filename))
-=======
-            use_veo = (video_mode.lower() in ("veo-director", "auto"))
-            logger.info(f"[VideoDirector] Running Dynamic Multi-Shot Engine for Scene {scene_number} (use_veo={use_veo})...")
-            animatic_res = await generate_multi_shot_dialogue_video(
-                project_id=project_id,
-                scene_number=scene_number,
-                scene_description=scene_description,
-                character_visuals=character_visuals,
-                use_veo_for_shots=use_veo,
-            )
-            if animatic_res:
-                return animatic_res
-        except Exception as anim_err:
-            logger.warning(f"[VideoDirector] Dynamic animatic pipeline encountered an issue: {anim_err}")
->>>>>>> Stashed changes
 
             user_downloads = Path.home() / "Downloads"
             if user_downloads.exists():
@@ -1319,7 +1228,6 @@ async def generate_scene_video(
         except Exception as copy_err:
             logger.warning(f"Could not mirror video to consumer directories: {copy_err}")
 
-<<<<<<< Updated upstream
         video_url = f"/api/media/videos/{final_filename}"
         return json.dumps({
             "success": True,
@@ -1333,37 +1241,6 @@ async def generate_scene_video(
             "merged_with_soundtrack": merged_with_soundtrack,
             "message": f"🎬 Generated high-fidelity cinematic video using Google Veo 3.1 for Scene {scene_number}!",
         })
-=======
-        ffmpeg_exe = _get_ffmpeg_path()
-        if ffmpeg_exe and frame_path and frame_path.exists():
-            cmd = [
-                ffmpeg_exe, "-y",
-                "-loop", "1", "-i", str(frame_path),
-                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=24000",
-                "-vf", "scale=1280:720,zoompan=z='min(zoom+0.0015,1.20)':d=3600:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30,eq=contrast=1.06:saturation=1.10,vignette=PI/4",
-                "-t", "120.0",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                str(fallback_filepath),
-            ]
-            subprocess.run(cmd, capture_output=True, timeout=150)
-            if fallback_filepath.exists() and fallback_filepath.stat().st_size > 1000:
-                video_url = f"/api/media/videos/{fallback_filename}"
-                return json.dumps({
-                    "success": True,
-                    "video_path": str(fallback_filepath),
-                    "filename": fallback_filename,
-                    "url": video_url,
-                    "scene_number": scene_number,
-                    "model": "cinematic-motion-keyframe",
-                    "video_mode": "animatic",
-                    "message": f"🎬 Generated cinematic motion keyframe video for Scene {scene_number}!",
-                })
-    except Exception as fb_err:
-        logger.warning(f"[VideoDirector] Final fallback error: {fb_err}")
->>>>>>> Stashed changes
 
     logger.error(f"[VideoDirector] Google Veo 3.1 generation failed for Scene {scene_number}")
     return json.dumps({

@@ -135,7 +135,7 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
                         <audio
                           controls
                           src={`http://localhost:8000${scene.soundtrack_audio}`}
-                          style={{ width: '100%', height: '32px' }}
+                          style={{ width: '100%' }}
                         >
                           Your browser does not support audio.
                         </audio>
@@ -147,7 +147,7 @@ export function ScriptWorkspace({ scriptState, currentScene, activeScene, setAct
                         <audio
                           controls
                           src={`http://localhost:8000${scene.table_read_audio}`}
-                          style={{ width: '100%', height: '32px' }}
+                          style={{ width: '100%' }}
                         >
                           Your browser does not support audio.
                         </audio>
