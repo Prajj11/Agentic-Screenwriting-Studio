@@ -123,7 +123,7 @@ export async function sendMessage(params: {
   try {
     // Long timeout for agent processing (agents + TTS + video gen can take minutes)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300_000); // 5 minutes
+    const timeoutId = setTimeout(() => controller.abort(), 900_000); // 15 minutes
     try {
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
@@ -140,7 +140,7 @@ export async function sendMessage(params: {
     }
   } catch (err: any) {
     if (err?.name === 'AbortError') {
-      throw new Error('Request timed out after 5 minutes. The backend may still be processing — check back in a moment.');
+      throw new Error('Request timed out after 15 minutes. The backend may still be processing — check back in a moment.');
     }
     throw new Error(err?.message || 'Failed to connect to backend API server.');
   }

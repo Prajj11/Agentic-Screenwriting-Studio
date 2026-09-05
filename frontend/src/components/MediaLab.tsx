@@ -534,7 +534,7 @@ export function MediaLab({ projectId, scenes, characters = {}, mediaAnalyses = [
                   {t.type}
                 </div>
                 <h4 style={{ fontSize: '0.95rem', fontWeight: 600, margin: '4px 0 8px' }}>{t.title}</h4>
-                <audio controls src={t.url} style={{ width: '100%', height: '36px' }} />
+                <audio controls src={t.url} style={{ width: '100%' }} />
               </div>
             ))}
           </div>

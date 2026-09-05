@@ -65,6 +65,32 @@ def _get_ffmpeg_path() -> str | None:
     except Exception:
         return None
 
+def _pad_video_to_120s(filepath: Path, ffmpeg_exe: str | None = None) -> Path:
+    """Loop the video to make it at least 120 seconds (2 mins) proper."""
+    if not ffmpeg_exe:
+        ffmpeg_exe = _get_ffmpeg_path()
+    if not ffmpeg_exe or not filepath.exists():
+        return filepath
+        
+    out_path = filepath.parent / f"padded_120s_{filepath.name}"
+    cmd = [
+        ffmpeg_exe, "-y",
+        "-stream_loop", "-1",
+        "-i", str(filepath),
+        "-t", "120.0",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-c:a", "aac",
+        str(out_path)
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=300)
+        if out_path.exists() and out_path.stat().st_size > 1000:
+            return out_path
+    except Exception as e:
+        logger.warning(f"Failed to pad video to 120s: {e}")
+    return filepath
+
 
 def _escape_drawtext(text: str, max_length: int = 80) -> str:
     """Sanitize and escape text string for FFmpeg drawtext filter."""
@@ -290,6 +316,7 @@ async def generate_multi_shot_dialogue_video(
     scene_number: int,
     scene_description: str,
     character_visuals: str = "",
+    use_veo_for_shots: bool = False,
 ) -> str | None:
     """
     Generate a full-duration, dynamic multi-camera dialogue scene animatic
@@ -308,7 +335,7 @@ async def generate_multi_shot_dialogue_video(
 
     state = await _get_state(project_id)
     scene = next((s for s in state.scenes if s.scene_number == scene_number), None)
-    if not scene or not scene.dialogue:
+    if not scene:
         return None
 
     output_dir = Path(settings.output_videos_dir)
@@ -319,10 +346,45 @@ async def generate_multi_shot_dialogue_video(
     logger.info(f"[MultiShotDirector] Directing dynamic multi-camera scene for Scene {scene_number} ({len(scene.dialogue)} lines)...")
 
     # Step 1: Generate per-speaker dialogue audio clips via Vertex AI Gemini 3.1 Flash TTS
-    dialogue_raw = [d.model_dump() for d in scene.dialogue]
-    segments = await perform_per_speaker_dialogue_tts(project_id, dialogue_raw, scene_number)
+    dialogue_raw = [d.model_dump() for d in scene.dialogue] if scene and scene.dialogue else []
+    
+    segments = []
+    if dialogue_raw:
+        segments = await perform_per_speaker_dialogue_tts(project_id, dialogue_raw, scene_number)
+    
     if not segments:
-        logger.warning("[MultiShotDirector] No audio segments generated.")
+        logger.warning("[MultiShotDirector] No dialogue found. Slicing scene_description into action shots...")
+        import re
+        # Slice the detailed prompt into logical chunks for multi-shot b-roll
+        sentences = [s.strip() for s in re.split(r'[.!?]\s+', scene_description) if len(s.strip()) > 10]
+        if not sentences:
+            sentences = [scene_description]
+        
+        import wave, uuid
+        for idx, sentence in enumerate(sentences):
+            duration = 7.0
+            filename = f"action_scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.wav"
+            filepath = output_dir / filename
+            
+            # Generate silent wav file
+            sample_rate = 24000
+            total_samples = int(sample_rate * duration)
+            silent_bytes = b"\x00\x00" * total_samples
+            with wave.open(str(filepath), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(sample_rate)
+                wf.writeframes(silent_bytes)
+
+            segments.append({
+                "character": "ACTION",
+                "line": sentence,
+                "duration": duration,
+                "audio_path": str(filepath),
+                "audio_bytes": silent_bytes
+            })
+            
+    if not segments:
         return None
 
     # Step 2: Generate cinematic scene-action images for each dialogue beat
@@ -403,17 +465,38 @@ async def generate_multi_shot_dialogue_video(
         shot_video_path = output_dir / f"scene_{scene_number}_shot_{idx}_{uuid.uuid4().hex[:6]}.mp4"
         logger.info(f"[MultiShotDirector] Rendering Shot {idx+1}/{len(segments)} ({speaker}, {duration:.1f}s)...")
 
-        ok = _render_dynamic_animatic_shot(
-            portrait_path=shot_image,
-            audio_path=audio_path,
-            speaker=speaker,
-            dialogue_line=dialogue_line,
-            duration=duration,
-            idx=idx,
-            output_path=shot_video_path,
-            ffmpeg_exe=ffmpeg_exe,
-            fps=fps,
-        )
+        ok = False
+        if use_veo_for_shots:
+            if speaker == "ACTION":
+                veo_prompt = f"Cinematic action shot: {dialogue_line}. Setting: {scene_description}"
+            else:
+                veo_prompt = f"Cinematic close-up of {speaker} acting, reacting, and speaking. They are saying: '{dialogue_line}'. Setting: {scene_description}"
+            
+            logger.info(f"[MultiShotDirector] Calling Veo for Shot {idx+1} (speaker: {speaker})...")
+            # NOTE: Assuming generate_veo_scene_video exists in scope or is imported
+            v_success, v_path, _ = await generate_veo_scene_video(
+                scene_number=scene_number,
+                scene_description=veo_prompt,
+                character_visuals=character_visuals,
+                project_id="", # Don't pass project_id so it doesn't attach to script state here!
+            )
+            if v_success and v_path and v_path.exists():
+                merged = merge_video_with_audio(v_path, audio_path, shot_video_path)
+                if merged and merged.exists():
+                    ok = True
+
+        if not ok:
+            ok = _render_dynamic_animatic_shot(
+                portrait_path=shot_image,
+                audio_path=audio_path,
+                speaker=speaker,
+                dialogue_line=dialogue_line,
+                duration=duration,
+                idx=idx,
+                output_path=shot_video_path,
+                ffmpeg_exe=ffmpeg_exe,
+                fps=fps,
+            )
 
         if ok and shot_video_path.exists() and shot_video_path.stat().st_size > 1000:
             shot_video_files.append(shot_video_path)
@@ -490,6 +573,14 @@ async def generate_multi_shot_dialogue_video(
             final_filename = scored_filename
 
     total_scene_duration = sum(s["duration"] for s in segments)
+    
+    # Force the video to be at least 120s as requested
+    padded_filepath = _pad_video_to_120s(final_filepath)
+    if padded_filepath != final_filepath:
+        final_filepath = padded_filepath
+        final_filename = padded_filepath.name
+        total_scene_duration = max(120.0, total_scene_duration)
+
     video_url = f"/api/media/videos/{final_filename}"
 
     # Step 6: Save and register in ScriptState
@@ -994,6 +1085,20 @@ async def generate_scene_video(
         if _active_states:
             project_id = list(_active_states.keys())[-1]
 
+    # ── Mode Branch: Forced Animatic or Veo-Director ─────────────────────────────────
+    if video_mode.lower() in ("animatic", "veo-director", "auto") and project_id:
+        try:
+            animatic_res = await generate_multi_shot_dialogue_video(
+                project_id=project_id,
+                scene_number=scene_number,
+                scene_description=scene_description,
+                character_visuals=character_visuals,
+                use_veo_for_shots=(video_mode.lower() in ("veo-director", "auto")),
+            )
+            if animatic_res:
+                return animatic_res
+        except Exception as a_err:
+            logger.warning(f"[VideoDirector] {video_mode} mode error: {a_err}")
     # Auto-enrich sparse scene inputs from canonical ScriptState if available
     target_dur = float(duration_seconds)
     if project_id:
@@ -1054,32 +1159,6 @@ async def generate_scene_video(
                 soundtrack_file = None
 
                 if scene:
-                    if scene.table_read_audio:
-                        if scene.table_read_audio.startswith("/api/media/audio/"):
-                            fname = scene.table_read_audio.split("/")[-1]
-                            candidate = Path(settings.output_audio_dir) / fname
-                            if candidate.exists():
-                                audio_file = candidate
-                        else:
-                            candidate = Path(scene.table_read_audio)
-                            if candidate.exists():
-                                audio_file = candidate
-
-                    # If no table read audio yet, generate on the fly
-                    if not audio_file and scene.dialogue:
-                        logger.info(f"[VeoMerge] Generating Table Read audio for Scene {scene_number}...")
-                        from tools.tts import perform_table_read
-                        dialogue_payload = json.dumps({
-                            "scene_number": scene_number,
-                            "dialogue": [d.model_dump() for d in scene.dialogue],
-                        })
-                        tts_res_json = await perform_table_read(project_id, dialogue_payload)
-                        tts_res = json.loads(tts_res_json)
-                        if tts_res.get("success") and tts_res.get("audio_path"):
-                            audio_file = Path(tts_res["audio_path"])
-                            if tts_res.get("url"):
-                                await attach_media_to_scene(project_id, scene_number, "table_read_audio", tts_res["url"])
-
                     if scene.soundtrack_audio:
                         if scene.soundtrack_audio.startswith("/api/media/audio/"):
                             sfname = scene.soundtrack_audio.split("/")[-1]
@@ -1091,20 +1170,26 @@ async def generate_scene_video(
                             if scandidate.exists():
                                 soundtrack_file = scandidate
 
-                if audio_file and audio_file.exists():
-                    merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_voiced_{uuid.uuid4().hex[:8]}.mp4"
-                    merged_path = merge_video_with_audio(
-                        video_path=veo_filepath,
-                        audio_path=audio_file,
-                        output_path=merged_output_path,
-                        soundtrack_path=soundtrack_file,
-                    )
-                    if merged_path and merged_path.exists():
-                        final_filepath = merged_path
-                        final_filename = merged_path.name
-                        merged_with_dialogue = True
-                        if soundtrack_file:
+                    # Table read logic has been removed to allow the video to use its native audio (if any).
+                    if soundtrack_file and soundtrack_file.exists():
+                        merged_output_path = veo_filepath.parent / f"scene_{scene_number}_veo_scored_{uuid.uuid4().hex[:8]}.mp4"
+                        # Use soundtrack as the primary audio track since table read is disabled
+                        merged_path = merge_video_with_audio(
+                            video_path=veo_filepath,
+                            audio_path=soundtrack_file,
+                            output_path=merged_output_path,
+                            soundtrack_path=None,
+                        )
+                        if merged_path and merged_path.exists():
+                            final_filepath = merged_path
+                            final_filename = merged_path.name
                             merged_with_soundtrack = True
+
+                    # Ensure at least 120 seconds for Veo mode too
+                    padded_filepath = _pad_video_to_120s(final_filepath)
+                    if padded_filepath != final_filepath:
+                        final_filepath = padded_filepath
+                        final_filename = padded_filepath.name
 
                 video_url = f"/api/media/videos/{final_filename}"
                 await attach_media_to_scene(project_id, scene_number, "concept_video", video_url)

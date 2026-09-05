@@ -1,8 +1,12 @@
 # 🎬 Agentic Screenwriting Studio
 
+> **Built for the Google Cloud Agentic Cinema Hackathon** 🏆
+
 A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a virtual writers' room for screenwriters. The system takes a writer from a one-line pitch to a continuity-checked, performable screenplay complete with cinematic concept art and original musical scores.
 
-## Architecture
+---
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -28,7 +32,7 @@ A multi-agent AI system powered by **Google ADK** and **Gemini** that acts as a 
 | **Table Read** | Multi-speaker audio performance | Gemini 3.1 Flash TTS |
 | **Composer** | Original cinematic soundtrack generation | Lyria 3 |
 
-## Key Features
+## ✨ Key Features
 
 ### 🛑 Forced Continuity Gate
 No scene can be marked as "final" until the Continuity Checker has verified it against all established canon. This is enforced programmatically — not optional.
@@ -45,7 +49,7 @@ The Composer agent analyzes the emotional beat of a finalized scene and generate
 ### 🎨 Responsive UI/UX
 A completely redesigned, modular React/Next.js frontend featuring responsive flexbox layouts, a dynamic chat experience, and a dedicated Scene Experience modal for viewing scripts alongside their generated media.
 
-## Tech Stack
+## 💻 Tech Stack
 
 - **Backend**: Python, FastAPI, Google ADK (Agent Development Kit)
 - **Frontend**: Next.js 14, TypeScript, Vanilla CSS
@@ -53,7 +57,9 @@ A completely redesigned, modular React/Next.js frontend featuring responsive fle
 - **Partner Integrations**: ClickHouse Cloud (Vector DB)
 - **State/Persistence**: SQLite (Persistent App State) + ClickHouse (Vector RAG)
 
-## Quick Start
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -108,7 +114,7 @@ The frontend starts at `http://localhost:3000`.
 4. Click "✍️ Draft Scene" to write scenes
 5. Once a scene is finalized, use the **Visualizer**, **Table Read**, and **Composer** to bring it to life!
 
-## Remote Setup (Running on Another Machine)
+## 🌍 Remote Setup (Running on Another Machine)
 
 If a team member needs to run the Agentic Screenwriting Studio on their own computer, follow these steps:
 
@@ -119,7 +125,7 @@ If a team member needs to run the Agentic Screenwriting Studio on their own comp
    - They must log in with a Google account that has permission to access your Google Cloud Project (`gen-lang-client-0423661956`).
 3. **Run It**: Once they are authenticated, they just double-click `run.bat` on their computer exactly like you do to start both servers.
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 ├── backend/
@@ -139,6 +145,6 @@ If a team member needs to run the Agentic Screenwriting Studio on their own comp
 └── README.md
 ```
 
-## License
+## 📜 License
 
 Built for the **Google Cloud Agentic Cinema Hackathon**.
