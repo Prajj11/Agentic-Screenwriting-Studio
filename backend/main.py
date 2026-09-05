@@ -14,13 +14,43 @@ import logging
 import os
 import sys
 
-os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
-os.environ["GOOGLE_CLOUD_PROJECT"] = "gen-lang-client-0423661956"
-os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
+from pathlib import Path
+import tempfile
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
+
+# Support GOOGLE_APPLICATION_CREDENTIALS_JSON for cloud container environments
+_creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+if _creds_json:
+    try:
+        _creds_file = Path(tempfile.gettempdir()) / "gcp_service_account.json"
+        _creds_file.write_text(_creds_json.strip(), encoding="utf-8")
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_creds_file)
+        
+        # Also ensure ADC file exists in user config for Google Cloud libraries
+        _adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+        _adc_path.parent.mkdir(parents=True, exist_ok=True)
+        _adc_path.write_text(_creds_json.strip(), encoding="utf-8")
+    except Exception as e:
+        print(f"Credentials setup warning: {e}")
+elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    _p = Path(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+    if not _p.is_absolute():
+        _res = Path(__file__).resolve().parent / _p
+        if _res.exists():
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_res)
+
+if "GOOGLE_GENAI_USE_VERTEXAI" not in os.environ:
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "false"
+    else:
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+
+if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+    os.environ["GOOGLE_CLOUD_PROJECT"] = "gen-lang-client-0423661956"
+if not os.getenv("GOOGLE_CLOUD_LOCATION"):
+    os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
