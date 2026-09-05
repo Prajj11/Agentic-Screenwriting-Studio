@@ -1,4 +1,4 @@
-# 🎬 Agentic Screenwriting Studio
+# 🎬 Talevora — Agentic Screenwriting Studio
 
 > **Built for the Google Cloud Agentic Cinema Hackathon** 🏆
 

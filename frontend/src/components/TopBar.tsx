@@ -24,7 +24,8 @@ export function TopBar({ onToggleSidebar, view, onBackToDashboard, projectTitle,
         </button>
         <div className="studio-header__brand">
           <span className="studio-header__icon">🎬</span>
-          <h1 className="studio-header__title">Agentic Screenwriting Studio</h1>
+          <h1 className="studio-header__title">Talevora</h1>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 400, opacity: 0.8 }}>Studio</span>
         </div>
       </div>
       <div className="studio-header__right">

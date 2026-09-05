@@ -158,8 +158,8 @@ logger = logging.getLogger("studio")
 
 # ── FastAPI App ───────────────────────────────────────────────────────
 app = FastAPI(
-    title="Agentic Screenwriting Studio",
-    description="Multi-agent AI system for collaborative screenwriting",
+    title="Talevora",
+    description="Talevora: Multi-agent AI system for collaborative screenwriting",
     version="1.0.0",
 )
 
@@ -422,7 +422,7 @@ async def startup():
     settings.ensure_directories()
     await get_sqlite_store()
     get_vector_store()  # Initializes both ChromaDB + ClickHouse
-    logger.info("🎬 Agentic Screenwriting Studio backend started")
+    logger.info("🎬 Talevora backend started")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
 
 
@@ -436,9 +436,10 @@ async def shutdown():
 
 # ── Health Check ──────────────────────────────────────────────────────
 
+@app.get("/health")
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "Agentic Screenwriting Studio", "version": "1.0.0"}
+    return {"status": "ok", "service": "Talevora", "version": "1.0.0"}
 
 
 @app.get("/api/health/clickhouse")
@@ -971,7 +972,7 @@ def _to_fountain(state: ScriptState) -> str:
     lines = []
     lines.append(f"Title: {state.title}")
     lines.append(f"Credit: Written by")
-    lines.append(f"Author: Agentic Screenwriting Studio")
+    lines.append(f"Author: Talevora")
     lines.append(f"Draft date: {state.updated_at[:10]}")
     lines.append(f"Notes: {state.logline}")
     lines.append("")
@@ -1014,14 +1015,29 @@ async def websocket_events(websocket: WebSocket):
         logger.info(f"WebSocket client disconnected ({len(_ws_connections)} total)")
 
 
+# ── Static Frontend Files ─────────────────────────────────────────────
+# Serve pre-rendered static frontend if present
+_static_candidates = [
+    Path(__file__).resolve().parent / "static",
+    Path(__file__).resolve().parent.parent / "frontend" / "out",
+    Path(__file__).resolve().parent / "frontend" / "out",
+]
+for _candidate in _static_candidates:
+    if _candidate.exists() and (_candidate / "index.html").exists():
+        logger.info(f"Serving static frontend from {_candidate}")
+        app.mount("/", StaticFiles(directory=str(_candidate), html=True), name="frontend_static")
+        break
+
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.environ.get("PORT", settings.backend_port))
     uvicorn.run(
         "main:app",
-        host=settings.backend_host,
-        port=settings.backend_port,
-        reload=True,
+        host="0.0.0.0",
+        port=port,
+        reload=False,
         log_level="info",
     )

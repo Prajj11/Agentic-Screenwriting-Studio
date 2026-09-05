@@ -1,9 +1,9 @@
 @echo off
-title Agentic Screenwriting Studio - Stopper
+title Talevora - Stopper
 color 0C
 
 echo ========================================================
-echo   🛑 STOPPING AGENTIC SCREENWRITING STUDIO
+echo   🛑 STOPPING TALEVORA
 echo ========================================================
 echo.
 

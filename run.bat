@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
-title Agentic Screenwriting Studio Launcher
+title Talevora Launcher
 color 0B
 
 echo ========================================================
-echo   🎬 AGENTIC SCREENWRITING STUDIO - LAUNCHER
+echo   🎬 TALEVORA - AGENTIC SCREENWRITING STUDIO
 echo ========================================================
 echo.
 

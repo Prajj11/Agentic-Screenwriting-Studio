@@ -95,9 +95,15 @@ export interface ProjectListItem {
   [key: string]: any;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL !== undefined
+  ? process.env.NEXT_PUBLIC_API_URL
+  : (typeof window !== 'undefined' && window.location.port !== '3000' ? '' : 'http://localhost:8000');
 
 export function getWebSocketUrl(): string {
+  if (typeof window !== 'undefined' && !API_BASE) {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${window.location.host}/ws/events`;
+  }
   const wsProtocol = API_BASE.startsWith('https') ? 'wss' : 'ws';
   const host = API_BASE.replace(/^https?:\/\//, '');
   return `${wsProtocol}://${host}/ws/events`;
