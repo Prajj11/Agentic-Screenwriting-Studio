@@ -1,7 +1,6 @@
 # 🎬 Talevora — Agentic Screenwriting Studio
 
 > **Built for the Google Cloud Agentic Cinema Hackathon** 🏆  
-> 🌐 **Live Demo:** [https://talevora.antideploy.com/]
 
 Live App: https://talevora.antideploy.com/
 
