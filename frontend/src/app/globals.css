@@ -525,6 +525,21 @@ body {
   color: var(--status-error);
 }
 
+.ch-status-label-short {
+  display: none;
+}
+
+.status-badge-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.02);
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    DASHBOARD VIEW
    ══════════════════════════════════════════════════════════════════════ */
@@ -816,23 +831,85 @@ body {
   position: relative;
 }
 
-.chat-panel {
-  width: 380px;
-  flex-shrink: 0;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 20;
+/* Mobile section switcher hidden on desktop */
+.mobile-section-nav {
+  display: none;
 }
 
-.script-editor {
+/* Panel slots */
+.studio-panel-slot {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.studio-panel-slot--chat {
+  width: 380px;
+  flex-shrink: 0;
+}
+
+.studio-panel-slot--workspace {
   flex: 1;
   min-width: 0;
 }
 
-.agent-panel {
-  width: 340px;
+.studio-panel-slot--agents {
+  width: 330px;
   flex-shrink: 0;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 20;
+}
+
+.chat-panel {
+  width: 100%;
+  height: 100%;
+}
+
+.agent-panel {
+  width: 100%;
+  height: 100%;
+}
+
+/* Workspace sub-navigation (Script / Beats / Characters / Media Lab) */
+.workspace-subnav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md);
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-default);
+  border-bottom: none;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  flex-shrink: 0;
+}
+
+.workspace-subnav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.workspace-subnav-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.workspace-subnav-btn--active {
+  background: var(--accent-glow);
+  color: var(--accent-primary);
+  border-color: var(--border-accent);
+  font-weight: 600;
 }
 
 /* ── Panels ───────────────────────────────────────────────────────── */
@@ -1399,48 +1476,298 @@ body {
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
 /* ── Responsive ───────────────────────────────────────────────────── */
-@media (max-width: 1400px) {
-  .chat-panel { width: 320px; }
-  .agent-panel { width: 280px; }
+@media (max-width: 1200px) {
+  .studio-panel-slot--chat { width: 340px; }
+  .studio-panel-slot--agents { width: 280px; }
 }
 
-@media (max-width: 1100px) {
-  .agent-panel {
-    position: absolute;
-    right: var(--space-md);
-    top: var(--space-md);
-    bottom: var(--space-md);
-    transform: translateX(150%);
-    box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+@media (max-width: 1024px) {
+  .studio-main {
+    flex-direction: column;
+    padding: var(--space-xs);
+    gap: var(--space-xs);
+    height: 100%;
+    overflow: hidden;
   }
-  .agent-panel.drawer-open {
-    transform: translateX(0);
+
+  /* Mobile section navigation bar */
+  .mobile-section-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px;
+    background: rgba(18, 18, 24, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-full);
+    width: 100%;
+    flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    z-index: 30;
+  }
+
+  .mobile-section-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    min-height: 40px;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-section-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .mobile-section-btn--active {
+    background: linear-gradient(135deg, rgba(245, 166, 35, 0.22) 0%, rgba(245, 166, 35, 0.08) 100%);
+    border-color: var(--accent-primary);
+    color: var(--accent-secondary);
+    box-shadow: 0 0 16px rgba(245, 166, 35, 0.25);
+  }
+
+  .mobile-section-btn__icon {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .mobile-section-btn__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    border-radius: var(--radius-full);
+    background: var(--accent-primary);
+    color: #000;
+  }
+
+  .mobile-section-btn__tag {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+  }
+
+  .mobile-section-btn--active .mobile-section-btn__tag {
+    background: rgba(245, 166, 35, 0.2);
+    color: var(--accent-secondary);
+  }
+
+  .mobile-section-btn__pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-working);
+    box-shadow: 0 0 8px var(--status-working);
+    animation: dotPulse 1.2s infinite ease-in-out;
+  }
+
+  /* Slot visibility switching */
+  .studio-panel-slot {
+    display: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+  }
+
+  .studio-panel-slot--active {
+    display: flex !important;
+  }
+
+  .chat-panel, .agent-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    position: static !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .workspace-subnav {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    padding: 6px var(--space-sm);
+  }
+  .workspace-subnav::-webkit-scrollbar {
+    display: none;
+  }
+  .workspace-subnav-btn {
+    white-space: nowrap;
+    padding: 6px 10px;
+    font-size: 0.75rem;
   }
 }
 
-@media (max-width: 800px) {
-  .chat-panel {
-    position: absolute;
-    left: var(--space-md);
-    top: var(--space-md);
-    bottom: var(--space-md);
-    transform: translateX(-150%);
-    box-shadow: 10px 0 40px rgba(0,0,0,0.6);
+@media (max-width: 768px) {
+  /* Layout & Viewport */
+  .studio-layout {
+    height: 100vh;
+    height: 100dvh;
+    max-height: -webkit-fill-available;
   }
-  .chat-panel.drawer-open {
-    transform: translateX(0);
+
+  /* Header */
+  .studio-header {
+    height: 54px;
+    padding: 0 var(--space-sm);
   }
-  
-  .dashboard__heading { font-size: 2rem; }
-  .dashboard__grid { grid-template-columns: 1fr; }
-  .dashboard { padding: var(--space-xl) var(--space-md); }
-  .dashboard__hero { margin-bottom: var(--space-xl); }
-  .studio-header__title { font-size: 1rem; }
+
+  .studio-header__left {
+    gap: var(--space-xs);
+  }
+
+  .studio-header__right {
+    gap: var(--space-xs);
+  }
+
+  .studio-header__icon {
+    font-size: 1.3rem;
+  }
+
+  .studio-header__title {
+    font-size: 1.05rem;
+  }
+
+  .studio-header__subtitle {
+    display: none;
+  }
+
+  .studio-header__project-name {
+    max-width: 110px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-back-btn {
+    padding: 5px 9px;
+    font-size: 0.75rem;
+  }
+  .header-back-btn__label {
+    display: none;
+  }
+
+  .ch-status-badge {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    gap: 4px;
+  }
+  .ch-status-label {
+    display: none;
+  }
+  .ch-status-label-short {
+    display: inline;
+  }
+
+  .status-badge-live .status-label {
+    display: none;
+  }
+
+  /* Dashboard */
+  .dashboard {
+    padding: var(--space-lg) var(--space-sm);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dashboard__hero {
+    margin-bottom: var(--space-lg);
+    text-align: center;
+  }
+  .dashboard__heading {
+    font-size: 1.8rem;
+  }
+  .dashboard__subtitle {
+    font-size: 0.88rem;
+  }
+  .dashboard__grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+  }
+
+  /* Project card action buttons visible on mobile touch */
+  .project-card__actions {
+    opacity: 1 !important;
+  }
+  .project-card {
+    min-height: 140px;
+  }
+
+  /* Content containers responsive padding */
+  .script-content {
+    padding: var(--space-md) var(--space-sm) !important;
+    font-size: 0.88rem !important;
+  }
+  .media-lab-container {
+    padding: var(--space-md) var(--space-sm) !important;
+  }
+  .beat-sheet-container {
+    padding: var(--space-md) var(--space-sm) !important;
+  }
+
+  /* Chat messages responsive */
+  .chat-messages {
+    padding: var(--space-sm) !important;
+    gap: var(--space-sm) !important;
+  }
+  .chat-message {
+    padding: var(--space-sm) var(--space-md) !important;
+    max-width: 100% !important;
+  }
+  .chat-input-area {
+    padding: var(--space-xs) var(--space-sm) var(--space-sm) !important;
+  }
+
+  .sidebar {
+    width: 100%;
+    max-width: 320px;
+  }
 }
 
-@media (max-width: 500px) {
-  .sidebar { width: 100%; }
-  .chat-panel, .agent-panel { 
-    width: calc(100% - calc(var(--space-md) * 2)); 
+@media (max-width: 480px) {
+  .sidebar {
+    width: 100%;
+    max-width: 100%;
+  }
+  .mobile-section-btn {
+    padding: 6px 4px;
+    font-size: 0.75rem;
+    gap: 4px;
+  }
+  .mobile-section-btn__tag {
+    display: none;
+  }
+  .studio-header__project-name {
+    max-width: 75px;
+  }
+  .studio-header__brand {
+    gap: 4px;
   }
 }
+

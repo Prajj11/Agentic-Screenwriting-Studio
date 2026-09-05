@@ -25,23 +25,25 @@ export function TopBar({ onToggleSidebar, view, onBackToDashboard, projectTitle,
         <div className="studio-header__brand">
           <span className="studio-header__icon">🎬</span>
           <h1 className="studio-header__title">Talevora</h1>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 400, opacity: 0.8 }}>Studio</span>
+          <span className="studio-header__subtitle">Studio</span>
         </div>
       </div>
       <div className="studio-header__right">
         {view === 'project' && (
-          <button className="header-back-btn" onClick={onBackToDashboard}>
-            ← Projects
+          <button className="header-back-btn" onClick={onBackToDashboard} title="Back to Projects">
+            <span className="header-back-btn__icon">←</span>
+            <span className="header-back-btn__label"> Projects</span>
           </button>
         )}
         {view === 'project' && projectTitle && (
-          <span className="studio-header__project-name">
+          <span className="studio-header__project-name" title={projectTitle}>
             {projectTitle}
           </span>
         )}
         <div className="studio-header__status-badges">
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {connected ? '🟢 Live' : '🔴 Offline'}
+          <span className="status-badge-live" title={connected ? 'Connected to backend' : 'Backend offline'}>
+            <span className="status-dot">{connected ? '🟢' : '🔴'}</span>
+            <span className="status-label">{connected ? ' Live' : ' Offline'}</span>
           </span>
           {chHealth?.clickhouse && (
             <span
@@ -54,14 +56,17 @@ export function TopBar({ onToggleSidebar, view, onBackToDashboard, projectTitle,
               }`}
               title={
                 chHealth.clickhouse?.status === 'connected'
-                  ? `ClickHouse: ${chHealth.clickhouse?.host} — ${chHealth.clickhouse?.scenes_indexed ?? 0} scenes`
+                  ? `ClickHouse: ${chHealth.clickhouse?.host} — ${chHealth.clickhouse?.scenes_indexed ?? 0} scenes, ${chHealth.clickhouse?.facts_indexed ?? 0} facts`
                   : chHealth.clickhouse?.status === 'not_configured'
                   ? 'ClickHouse not configured — using local ChromaDB'
                   : `ClickHouse error: ${chHealth.clickhouse?.error}`
               }
             >
-              {chHealth.clickhouse?.status === 'connected' ? '🟢' : chHealth.clickhouse?.status === 'not_configured' ? '🟡' : '🔴'}
-              {' '}ClickHouse
+              <span className="ch-status-dot">
+                {chHealth.clickhouse?.status === 'connected' ? '🟢' : chHealth.clickhouse?.status === 'not_configured' ? '🟡' : '🔴'}
+              </span>
+              <span className="ch-status-label"> ClickHouse</span>
+              <span className="ch-status-label-short"> CH</span>
             </span>
           )}
         </div>
@@ -69,3 +74,4 @@ export function TopBar({ onToggleSidebar, view, onBackToDashboard, projectTitle,
     </header>
   );
 }
+

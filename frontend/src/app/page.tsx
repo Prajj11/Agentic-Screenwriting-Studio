@@ -45,6 +45,7 @@ export default function StudioPage() {
   const [view, setView] = useState<'dashboard' | 'project'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'script' | 'beats' | 'characters' | 'media'>('script');
+  const [mobileSection, setMobileSection] = useState<'chat' | 'workspace' | 'agents'>('chat');
 
   // Project management
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -263,12 +264,16 @@ export default function StudioPage() {
       const textLower = (message + ' ' + (response.response_text || '')).toLowerCase();
       if (textLower.includes('/api/media/videos/') || textLower.includes('/api/media/images/') || textLower.includes('visualize') || textLower.includes('video') || textLower.includes('concept art') || textLower.includes('portrait')) {
         setActiveTab('media');
+        setMobileSection('workspace');
       } else if (textLower.includes('beat sheet') || textLower.includes('story architect') || textLower.includes('beat')) {
         setActiveTab('beats');
+        setMobileSection('workspace');
       } else if (textLower.includes('character bible') || textLower.includes('character profile')) {
         setActiveTab('characters');
+        setMobileSection('workspace');
       } else if (textLower.includes('draft scene') || textLower.includes('dialogue specialist') || textLower.includes('screenplay')) {
         setActiveTab('script');
+        setMobileSection('workspace');
       }
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Unknown error';
@@ -361,51 +366,147 @@ export default function StudioPage() {
         />
       ) : (
         <main className="studio-main">
-          <ChatPanel 
-            messages={messages} 
-            isLoading={isLoading} 
-            onSend={handleSend} 
-            onSelectTab={(tab) => setActiveTab(tab)}
-          />
-          <div className="workspace-container" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
-             {activeTab === 'script' && (
-                <ScriptWorkspace 
-                  scriptState={scriptState} 
-                  currentScene={currentScene} 
-                  activeScene={activeScene}
-                  setActiveScene={setActiveScene}
-                  onAction={handleSend}
-                />
-             )}
-             {activeTab === 'beats' && (
-                <BeatSheet 
-                  beats={beats}
-                  onDraftScene={(beatNum) => handleSend(`Draft scene for beat ${beatNum}`)}
-                  isLoading={isLoading}
-                />
-             )}
-             {activeTab === 'characters' && (
-                <CharacterBible 
-                  characters={scriptState?.characters || {}}
-                />
-             )}
-             {activeTab === 'media' && (
-                <MediaLab
-                  projectId={projectId}
-                  scenes={scriptState?.scenes || []}
-                  characters={scriptState?.characters || {}}
-                  mediaAnalyses={scriptState?.media_analyses || []}
-                  activeSceneNumber={currentScene?.scene_number || 0}
-                  onAction={handleSend}
-                />
-             )}
+          {/* Mobile Section Switcher (visible on screens <= 1024px) */}
+          <div className="mobile-section-nav" role="tablist" aria-label="Studio views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileSection === 'chat'}
+              className={`mobile-section-btn ${mobileSection === 'chat' ? 'mobile-section-btn--active' : ''}`}
+              onClick={() => setMobileSection('chat')}
+            >
+              <span className="mobile-section-btn__icon">💬</span>
+              <span className="mobile-section-btn__text">Writers&apos; Room</span>
+              {messages.length > 0 && (
+                <span className="mobile-section-btn__count">{messages.length}</span>
+              )}
+            </button>
+            
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileSection === 'workspace'}
+              className={`mobile-section-btn ${mobileSection === 'workspace' ? 'mobile-section-btn--active' : ''}`}
+              onClick={() => setMobileSection('workspace')}
+            >
+              <span className="mobile-section-btn__icon">
+                {activeTab === 'script' ? '📜' : activeTab === 'beats' ? '📐' : activeTab === 'characters' ? '👥' : '🎥'}
+              </span>
+              <span className="mobile-section-btn__text">Workspace</span>
+              <span className="mobile-section-btn__tag">{activeTab}</span>
+            </button>
+            
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileSection === 'agents'}
+              className={`mobile-section-btn ${mobileSection === 'agents' ? 'mobile-section-btn--active' : ''}`}
+              onClick={() => setMobileSection('agents')}
+            >
+              <span className="mobile-section-btn__icon">🤖</span>
+              <span className="mobile-section-btn__text">AI Team</span>
+              {agents.some(a => a.status === 'working') ? (
+                <span className="mobile-section-btn__pulse" title="Agents working" />
+              ) : (
+                <span className="mobile-section-btn__count">{agents.length || 8}</span>
+              )}
+            </button>
           </div>
-          <AgentStatusPanel agents={agents} />
+
+          {/* Slot 1: Writers' Room Chat */}
+          <div className={`studio-panel-slot studio-panel-slot--chat ${mobileSection === 'chat' ? 'studio-panel-slot--active' : ''}`}>
+            <ChatPanel 
+              messages={messages} 
+              isLoading={isLoading} 
+              onSend={handleSend} 
+              onSelectTab={(tab) => {
+                setActiveTab(tab);
+                setMobileSection('workspace');
+              }}
+            />
+          </div>
+
+          {/* Slot 2: Studio Workspace */}
+          <div className={`studio-panel-slot studio-panel-slot--workspace ${mobileSection === 'workspace' ? 'studio-panel-slot--active' : ''}`}>
+            <div className="workspace-subnav">
+              <button
+                type="button"
+                className={`workspace-subnav-btn ${activeTab === 'script' ? 'workspace-subnav-btn--active' : ''}`}
+                onClick={() => setActiveTab('script')}
+              >
+                📜 Script
+              </button>
+              <button
+                type="button"
+                className={`workspace-subnav-btn ${activeTab === 'beats' ? 'workspace-subnav-btn--active' : ''}`}
+                onClick={() => setActiveTab('beats')}
+              >
+                📐 Beats {beats.length > 0 ? `(${beats.length})` : ''}
+              </button>
+              <button
+                type="button"
+                className={`workspace-subnav-btn ${activeTab === 'characters' ? 'workspace-subnav-btn--active' : ''}`}
+                onClick={() => setActiveTab('characters')}
+              >
+                👥 Characters {Object.keys(scriptState?.characters || {}).length > 0 ? `(${Object.keys(scriptState?.characters || {}).length})` : ''}
+              </button>
+              <button
+                type="button"
+                className={`workspace-subnav-btn ${activeTab === 'media' ? 'workspace-subnav-btn--active' : ''}`}
+                onClick={() => setActiveTab('media')}
+              >
+                🎥 Media Lab
+              </button>
+            </div>
+
+            <div className="workspace-container" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)', width: '100%', height: '100%' }}>
+               {activeTab === 'script' && (
+                  <ScriptWorkspace 
+                    scriptState={scriptState} 
+                    currentScene={currentScene} 
+                    activeScene={activeScene}
+                    setActiveScene={setActiveScene}
+                    onAction={handleSend}
+                  />
+               )}
+               {activeTab === 'beats' && (
+                  <BeatSheet 
+                    beats={beats}
+                    onDraftScene={(beatNum) => {
+                      handleSend(`Draft scene for beat ${beatNum}`);
+                      setMobileSection('chat');
+                    }}
+                    isLoading={isLoading}
+                  />
+               )}
+               {activeTab === 'characters' && (
+                  <CharacterBible 
+                    characters={scriptState?.characters || {}}
+                  />
+               )}
+               {activeTab === 'media' && (
+                  <MediaLab
+                    projectId={projectId}
+                    scenes={scriptState?.scenes || []}
+                    characters={scriptState?.characters || {}}
+                    mediaAnalyses={scriptState?.media_analyses || []}
+                    activeSceneNumber={currentScene?.scene_number || 0}
+                    onAction={handleSend}
+                  />
+               )}
+            </div>
+          </div>
+
+          {/* Slot 3: AI Team Status */}
+          <div className={`studio-panel-slot studio-panel-slot--agents ${mobileSection === 'agents' ? 'studio-panel-slot--active' : ''}`}>
+            <AgentStatusPanel agents={agents} />
+          </div>
         </main>
       )}
     </AppShell>
   );
 }
+
 // ΓöÇΓöÇ Default agent list (before backend connects) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 const defaultAgents: AgentStatus[] = [

@@ -40,8 +40,8 @@ export function CharacterBible({ characters }: CharacterBibleProps) {
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: 'var(--space-lg)'
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))',
+        gap: 'var(--space-md)'
       }}>
         {chars.map((char, idx) => {
           const visualDesc = char.visual_description || char.appearance || char.description || '';
