@@ -339,5 +339,12 @@ def get_clickhouse_store() -> ClickHouseVectorStore | None:
             database=settings.clickhouse_database,
             embedding_model=settings.gemini_embedding_model,
         )
-        _store.connect()
+        try:
+            _store.connect()
+        except Exception as e:
+            logger.warning(
+                f"Failed to connect to ClickHouse at {settings.clickhouse_host}:{settings.clickhouse_port}: {e}. "
+                "Using ChromaDB fallback."
+            )
+            _store._client = None
     return _store

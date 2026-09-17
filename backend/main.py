@@ -450,8 +450,14 @@ async def _run_agent(project_id: str, user_message: str) -> tuple[str, list[dict
 async def startup():
     """Initialize database connections on startup."""
     settings.ensure_directories()
-    await get_sqlite_store()
-    get_vector_store()  # Initializes both ChromaDB + ClickHouse
+    try:
+        await get_sqlite_store()
+    except Exception as e:
+        logger.error(f"Failed to initialize SQLite store: {e}")
+    try:
+        get_vector_store()  # Initializes both ChromaDB + ClickHouse
+    except Exception as e:
+        logger.error(f"Failed to initialize vector store: {e}")
     logger.info("🎬 Talevora backend started")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
 

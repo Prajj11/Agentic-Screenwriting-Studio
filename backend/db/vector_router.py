@@ -32,7 +32,7 @@ class VectorStoreRouter:
     ):
         self._chroma = chroma
         self._clickhouse = clickhouse
-        self._ch_healthy = clickhouse is not None
+        self._ch_healthy = clickhouse is not None and getattr(clickhouse, "_client", None) is not None
 
     # ── Status ────────────────────────────────────────────────────────
 
